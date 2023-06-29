@@ -1,0 +1,29 @@
+/posts/
+/posts/{postID}/
+/posts/{category}/
+/posts/{category}/{postID}/
+
+GET /posts/
++ Create Post
++ Create Category
+- Edit Post
+- View Post
+- Delete Post
+
+GET /posts/{postID}/
++ Save Post
++ View Post (post must be saved first)
+
+GET /posts/{postID}/?view
++ Edit Post
+
+GET /posts/{category}/
++ Create Post
+
+GET /posts/{category}/{postID}/
+
+GET /posts/{category}/{postID}/?view
+
+POST /posts/
+
+POST /posts/{postID}/
