@@ -1,29 +1,33 @@
+== Posts ==
+
 /posts/
 /posts/{postID}/
 /posts/{category}/
 /posts/{category}/{postID}/
 
 GET /posts/
-+ Create Post
-+ Create Category
-- Edit Post
-- View Post
-- Delete Post
++ Create Post => POST /create/posts/ | POST /create/posts/{postID}/
++ Create Category => POST /create/posts/{category}/
+- (default) Edit Post => GET /posts/{postID}/
+- View Post => GET /posts/{postID}/?view
+- Delete Post => POST /delete/posts/{postID}/ | POST /delete/posts/{category}/{postID}/
 
 GET /posts/{postID}/
-+ Save Post
-+ View Post (post must be saved first)
++ Save Post => POST /posts/{postID}/
++ View Post => GET /posts/{postID}/?view
 
 GET /posts/{postID}/?view
-+ Edit Post
++ Edit Post => GET /posts/{postID}/
 
 GET /posts/{category}/
-+ Create Post
++ Create Post => POST /create/posts/{category}/
+- (default) Edit Post => GET /posts/{postID}/
+- View Post => GET /posts/{postID}/?view
+- Delete Post
 
 GET /posts/{category}/{postID}/
++ Save Post => POST /posts/{category}/{postID}/
++ View Post => GET /posts/{category}/{postID}/?view
 
 GET /posts/{category}/{postID}/?view
-
-POST /posts/
-
-POST /posts/{postID}/
++ Edit Post => GET /posts/{category}/{postID}/
