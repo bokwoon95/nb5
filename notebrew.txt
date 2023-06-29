@@ -5,6 +5,8 @@
 /posts/{category}/
 /posts/{category}/{postID}/
 
+TODO: Rehash this, make sure /posts/ and /posts/{category}/ are mirror image entries of each other.
+
 GET /posts/
 + Create Post => POST /create/posts/ | POST /create/posts/{postID}/
 + Create Category => POST /create/posts/{category}/
@@ -21,8 +23,8 @@ GET /posts/{postID}/?view
 
 GET /posts/{category}/
 + Create Post => POST /create/posts/{category}/
-- (default) Edit Post => GET /posts/{postID}/
-- View Post => GET /posts/{postID}/?view
+- (default) Edit Post => GET /posts/{category}/{postID}/
+- View Post => GET /posts/{category}/{postID}/?view
 - Delete Post
 
 GET /posts/{category}/{postID}/
@@ -31,3 +33,13 @@ GET /posts/{category}/{postID}/
 
 GET /posts/{category}/{postID}/?view
 + Edit Post => GET /posts/{category}/{postID}/
+
+POST /create/posts/ => GET /posts/{postID}/
+
+POST /create/posts/{postID}/ => GET /posts/{postID}/
+
+POST /create/posts/{category}/ => GET /posts/{category}/{postID}/
+
+POST /create/posts/{category}/{postID}/ => GET /posts/{category}/{postID}/
+
+POST /create/posts/{category}/ => GET /posts/
