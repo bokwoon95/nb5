@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -472,11 +473,47 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
+var forbiddenNames = map[string]struct{}{
+	"con": {}, "prn": {}, "aux": {}, "nul": {}, "com1": {}, "com2": {},
+	"com3": {}, "com4": {}, "com5": {}, "com6": {}, "com7": {}, "com8": {},
+	"com9": {}, "lpt1": {}, "lpt2": {}, "lpt3": {}, "lpt4": {}, "lpt5": {},
+	"lpt6": {}, "lpt7": {}, "lpt8": {}, "lpt9": {},
+}
+
+func validateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	for _, c := range name {
+		if c > 127 {
+			continue
+		}
+		if c >= 'a' && c <= 'z' {
+			continue
+		}
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if c == '-' || c == '_' {
+			continue
+		}
+		return fmt.Errorf("invalid character: %c", c)
+	}
+	if _, ok := forbiddenNames[name]; ok {
+		return fmt.Errorf("invalid name: %s", name)
+	}
+	return nil
+}
+
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, siteName string) {
 	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
 	if segment != "" {
 		nbrew.notFound(w, r)
 		return
+	}
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
 	if r.Method == "GET" {
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
@@ -487,7 +524,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf := bufPool.Get().(*bytes.Buffer)
 		defer bufPool.Put(buf)
 		buf.Reset()
-		err = tmpl.Execute(buf, map[string]any{})
+		err = tmpl.Execute(buf, map[string]any{
+			"dir": r.Form.Get("dir"),
+		})
 		if err != nil {
 			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
 			return
@@ -495,7 +534,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf.WriteTo(w)
 		return
 	}
+	dir := r.Form.Get("dir")
+	name := r.Form.Get("name")
 	if r.Method == "POST" {
+		name = path.Join(dir, name)
 		return
 	}
 	http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)

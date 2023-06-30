@@ -4,5 +4,17 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/admin/static/lib/tachyons.min.css.gz">
 <link rel="stylesheet" href="/admin/static/styles.css">
-<title>Create</title>
-<h1 class="f3">Create</h1>
+<title>Create file</title>
+<form method="post">
+    {{- if eq .responseCode 1 }}
+    <p id="responseCode" value="1">[ERROR] Incorrect email or password.
+    {{- else if eq .responseCode 2 }}
+    <p id="responseCode" value="2">[SUCCESS] Password reset successfully. Please login using your new credentials.
+    {{- end }}
+    {{- if .dir }}
+    <p><input type="hidden" name="dir" value="{{ .dir }}">
+    <p>Creating file in directory: {{ .dir }}
+    {{- end }}
+    <p><label>Filename: <input name="name" required></label>
+    <p><button>Create file</button>
+</form>
