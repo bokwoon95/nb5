@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -25,9 +26,12 @@ var embedFS embed.FS
 
 var rootFS fs.FS = os.DirFS(".")
 
-var bufpool = sync.Pool{
+var bufPool = sync.Pool{
 	New: func() any { return &bytes.Buffer{} },
 }
+
+// TODO: Use a gzipPool with compression level 4 instead of instantiating a new gzipWriter every time.
+var gzipPool sync.Pool
 
 // ErrNotWritable indicates that the filesystem cannot be written to.
 //
@@ -47,9 +51,11 @@ type Notebrew struct {
 	// databases are supported.
 	Dialect string
 
-	AdminURL string // http://localhost:6444, https://example.com
+	Scheme string // http:// | https://
 
-	ContentURL string // http://localhost:6444, https://example.com
+	AdminDomain string // localhost:6444, example.com
+
+	ContentDomain string // localhost:6444, example.com
 
 	// NOTE: Document that AdminURL and ContentURL must either be prefixed with
 	// https:// (if online) or http:// (if offline). And their http/https
@@ -101,7 +107,7 @@ type RemoveAllFS interface {
 type MoveFS interface {
 	fs.FS
 
-	Move(srcpath, destpath string) error
+	Move(oldpath, newpath string) error
 }
 
 // OpenWriter opens an io.WriteCloser from the file system that represents an
@@ -149,9 +155,9 @@ func RemoveAll(fsys fs.FS, path string) error {
 }
 
 // TODO: Document this.
-func Move(fsys fs.FS, srcpath, destpath string) error {
+func Move(fsys fs.FS, oldpath, newpath string) error {
 	if fsys, ok := fsys.(MoveFS); ok {
-		return fsys.Move(srcpath, destpath)
+		return fsys.Move(oldpath, newpath)
 	}
 	return ErrNotWritable
 }
@@ -217,7 +223,7 @@ func (dir dirFS) Open(name string) (fs.File, error) {
 func (dir dirFS) OpenWriter(name string) (io.WriteCloser, error) {
 	var err error
 	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: "open_writer", Path: name, Err: fs.ErrInvalid}
 	}
 	tempDir := filepath.Join(os.TempDir(), "notebrew_temp_dir")
 	err = os.MkdirAll(tempDir, 0755)
@@ -241,7 +247,7 @@ func (dir dirFS) OpenWriter(name string) (io.WriteCloser, error) {
 
 func (dir dirFS) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
-		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "mkdir_all", Path: path, Err: fs.ErrInvalid}
 	}
 	path = filepath.ToSlash(filepath.Join(string(dir), path))
 	return os.MkdirAll(path, perm)
@@ -249,21 +255,38 @@ func (dir dirFS) MkdirAll(path string, perm fs.FileMode) error {
 
 func (dir dirFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
-		return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "remove_all", Path: path, Err: fs.ErrInvalid}
 	}
 	path = filepath.ToSlash(filepath.Join(string(dir), path))
 	return os.RemoveAll(path)
 }
 
-func (dir dirFS) Rename(oldpath, newpath string) error {
+func (dir dirFS) Move(oldpath, newpath string) error {
 	if !fs.ValidPath(oldpath) {
-		return &fs.PathError{Op: "rename", Path: oldpath, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "move", Path: oldpath, Err: fs.ErrInvalid}
 	}
 	if !fs.ValidPath(newpath) {
-		return &fs.PathError{Op: "rename", Path: newpath, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "move", Path: newpath, Err: fs.ErrInvalid}
 	}
 	oldpath = filepath.ToSlash(filepath.Join(string(dir), oldpath))
 	newpath = filepath.ToSlash(filepath.Join(string(dir), newpath))
+	oldFileInfo, err := os.Stat(oldpath)
+	if err != nil {
+		return err
+	}
+	newFileInfo, err := os.Stat(newpath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return os.Rename(oldpath, newpath)
+		}
+		return err
+	}
+	if !oldFileInfo.IsDir() && newFileInfo.IsDir() {
+		if runtime.GOOS == "windows" {
+			return exec.Command("move", oldpath, newpath).Run()
+		}
+		return exec.Command("mv", oldpath, newpath).Run()
+	}
 	return os.Rename(oldpath, newpath)
 }
 
@@ -447,4 +470,33 @@ func readFile(fsys fs.FS, name string) (string, error) {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, siteName string) {
+	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
+	if segment != "" {
+		nbrew.notFound(w, r)
+		return
+	}
+	if r.Method == "GET" {
+		tmpl, err := template.ParseFS(rootFS, "html/create.html")
+		if err != nil {
+			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+			return
+		}
+		buf := bufPool.Get().(*bytes.Buffer)
+		defer bufPool.Put(buf)
+		buf.Reset()
+		err = tmpl.Execute(buf, map[string]any{})
+		if err != nil {
+			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+			return
+		}
+		buf.WriteTo(w)
+		return
+	}
+	if r.Method == "POST" {
+		return
+	}
+	http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 }

@@ -13,6 +13,13 @@
 - newdir
 - newname
 
+nbrew.create()
+nbrew.mkdirAll()
+nbrew.removeAll()
+nbrew.move()
+
+POST /admin/create/posts/ => 302 /admin/posts/{postID}/
+
 == Posts ==
 
 /posts/
