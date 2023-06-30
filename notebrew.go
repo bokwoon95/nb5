@@ -29,8 +29,6 @@ var bufpool = sync.Pool{
 	New: func() any { return &bytes.Buffer{} },
 }
 
-// ErrNotWritable
-
 // ErrNotWritable indicates that the filesystem cannot be written to.
 //
 // It is returned by the functions OpenWriter, RemoveAll and WalkDir to
@@ -103,14 +101,7 @@ type RemoveAllFS interface {
 type MoveFS interface {
 	fs.FS
 
-	Move(oldpath, newpath string) error
-}
-
-// TODO: Document this.
-type RenameFS interface {
-	fs.FS
-
-	Rename(oldpath, newpath string) error
+	Move(srcpath, destpath string) error
 }
 
 // OpenWriter opens an io.WriteCloser from the file system that represents an
@@ -158,9 +149,9 @@ func RemoveAll(fsys fs.FS, path string) error {
 }
 
 // TODO: Document this.
-func Rename(fsys fs.FS, oldpath, newpath string) error {
-	if fsys, ok := fsys.(RenameFS); ok {
-		return fsys.Rename(oldpath, newpath)
+func Move(fsys fs.FS, srcpath, destpath string) error {
+	if fsys, ok := fsys.(MoveFS); ok {
+		return fsys.Move(srcpath, destpath)
 	}
 	return ErrNotWritable
 }
