@@ -2,6 +2,11 @@ All form error messages must follow this style (see the first image):
 https://stackoverflow.com/questions/42189518/bootstrap-form-showing-error-messages-in-a-different-style
 https://i.stack.imgur.com/cG0dp.png
 
+notes:
+- When posting to /admin/create/, we need to enforce some path validation.
+    - Must start with posts, pages, templates, notes or assets.
+    - Posts and pages must adhere to the /posts/{postID}/ or /posts/{category}/{postID}/ format.
+
 /admin/create/
 - dir
 - name
