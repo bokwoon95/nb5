@@ -1,3 +1,18 @@
+/admin/create/
+- dir
+- name
+/admin/mkdir_all/
+- dir
+- name
+/admin/remove_all/
+- dir
+- name
+/admin/move/
+- olddir
+- oldname
+- newdir
+- newname
+
 == Posts ==
 
 /posts/

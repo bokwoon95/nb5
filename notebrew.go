@@ -100,6 +100,12 @@ type RemoveAllFS interface {
 	RemoveAll(path string) error
 }
 
+type MoveFS interface {
+	fs.FS
+
+	Move(oldpath, newpath string) error
+}
+
 // TODO: Document this.
 type RenameFS interface {
 	fs.FS
