@@ -473,7 +473,7 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-var forbiddenNames = map[string]struct{}{
+var invalidNames = map[string]struct{}{
 	"con": {}, "prn": {}, "aux": {}, "nul": {}, "com1": {}, "com2": {},
 	"com3": {}, "com4": {}, "com5": {}, "com6": {}, "com7": {}, "com8": {},
 	"com9": {}, "lpt1": {}, "lpt2": {}, "lpt3": {}, "lpt4": {}, "lpt5": {},
@@ -499,7 +499,7 @@ func validateName(name string) error {
 		}
 		return fmt.Errorf("invalid character: %c", c)
 	}
-	if _, ok := forbiddenNames[name]; ok {
+	if _, ok := invalidNames[name]; ok {
 		return fmt.Errorf("invalid name: %s", name)
 	}
 	return nil
