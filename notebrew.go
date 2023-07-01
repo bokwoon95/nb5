@@ -559,27 +559,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	dir := r.Form.Get("dir")
 	name := r.Form.Get("name")
 	if r.Method == "POST" {
-		formErrMsgs := make(map[string][]string)
-		defer func() {
-			// TODO: Cookie header has to be written *before* we write to the body.
-			if len(formErrMsgs) == 0 {
-				return
-			}
-			b, err := json.Marshal(formErrMsgs)
-			if err != nil {
-				return
-			}
-			http.SetCookie(w, &http.Cookie{
-				Path:     "/" + path.Join(sitePrefix, "admin/create") + "/",
-				Name:     "form_err_msgs",
-				Value:    base64.URLEncoding.EncodeToString(b),
-				Secure:   nbrew.Scheme == "https://",
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-				MaxAge:   -1,
-			})
-		}()
 		name = path.Join(dir, name)
+		// Step 1: Validate the name (starts with posts, notes, pages, templates or assets) (no forbidden characters)
+		// Step 2: Validate the name format. (the right number of segments, the right file extensions) (if postID or noteID is missing, here is the step to automatically generate a new one)
+		// Step 3: OpenWriter and close it immediately, then redirect the user to the corresponding resource path.
 		return
 	}
 	http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
