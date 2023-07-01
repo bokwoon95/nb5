@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"database/sql"
 	"embed"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -505,12 +507,7 @@ func validateName(name string) error {
 	return nil
 }
 
-func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, siteName string) {
-	// flash_data
-	type FlashData struct {
-		ErrMsgs map[string][]string
-		Dir     string
-	}
+func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
 	if segment != "" {
 		nbrew.notFound(w, r)
@@ -521,6 +518,28 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
 	if r.Method == "GET" {
+		templateData := struct {
+			Dir         string
+			FormErrMsgs map[string][]string
+		}{
+			Dir: r.Form.Get("dir"),
+		}
+		cookie, _ := r.Cookie("form_err_msgs")
+		if cookie != nil {
+			b, err := base64.URLEncoding.DecodeString(cookie.Value)
+			if err == nil {
+				_ = json.Unmarshal(b, &templateData.FormErrMsgs)
+			}
+			http.SetCookie(w, &http.Cookie{
+				Path:     "/" + path.Join(sitePrefix, "admin/create") + "/",
+				Name:     "form_err_msgs",
+				Value:    "",
+				Secure:   nbrew.Scheme == "https://",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				MaxAge:   -1,
+			})
+		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
 			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
@@ -529,9 +548,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf := bufPool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufPool.Put(buf)
-		err = tmpl.Execute(buf, map[string]any{
-			"dir": r.Form.Get("dir"),
-		})
+		err = tmpl.Execute(buf, &templateData)
 		if err != nil {
 			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
 			return
