@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/bokwoon95/sq v0.3.5
 	github.com/bokwoon95/sqddl v0.4.5
+	github.com/oklog/ulid/v2 v2.1.0
 )
 
 require (

@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"database/sql"
 	"embed"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -22,6 +21,9 @@ import (
 	"strings"
 	"sync"
 	"text/template/parse"
+
+	"github.com/bokwoon95/sq"
+	"github.com/oklog/ulid/v2"
 )
 
 //go:embed html static
@@ -508,6 +510,10 @@ func validateName(name string) error {
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
+	if nbrew.DB == nil {
+		nbrew.notFound(w, r)
+		return
+	}
 	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
 	if segment != "" {
 		nbrew.notFound(w, r)
@@ -520,25 +526,53 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	if r.Method == "GET" {
 		templateData := struct {
 			Dir         string
-			FormErrMsgs map[string][]string
+			FormErrmsgs url.Values
 		}{
 			Dir: r.Form.Get("dir"),
 		}
-		cookie, _ := r.Cookie("form_err_msgs")
+		cookie, _ := r.Cookie("form_errmsgs")
 		if cookie != nil {
-			b, err := base64.URLEncoding.DecodeString(cookie.Value)
-			if err == nil {
-				_ = json.Unmarshal(b, &templateData.FormErrMsgs)
-			}
 			http.SetCookie(w, &http.Cookie{
-				Path:     "/" + path.Join(sitePrefix, "admin/create") + "/",
-				Name:     "form_err_msgs",
+				Path:     r.URL.Path,
+				Name:     "form_errmsgs",
 				Value:    "",
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				MaxAge:   -1,
 			})
+			sessionID, err := ulid.Parse(cookie.Value)
+			if err == nil {
+				templateData.FormErrmsgs, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
+					Dialect: nbrew.Dialect,
+					Format:  "SELECT {*} FROM flash_sessions WHERE session_id = {sessionID}",
+					Values: []any{
+						sq.UUIDParam("sessionID", sessionID),
+					},
+				}, func(row *sq.Row) (result url.Values) {
+					payload := row.String("payload")
+					result, err = url.ParseQuery(payload)
+					if err != nil {
+						panic(err)
+					}
+					return result
+				})
+				if err != nil {
+					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+					return
+				}
+				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+					Dialect: nbrew.Dialect,
+					Format:  "DELETE FROM flash_sessions WHERE session_id = {sessionID}",
+					Values: []any{
+						sq.UUIDParam("sessionID", sessionID),
+					},
+				})
+				if err != nil {
+					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
@@ -556,10 +590,63 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf.WriteTo(w)
 		return
 	}
-	dir := r.Form.Get("dir")
-	name := r.Form.Get("name")
 	if r.Method == "POST" {
-		name = path.Join(dir, name)
+		formErrmsgs := make(url.Values)
+		redirect := func(w http.ResponseWriter, r *http.Request) {
+			sessionID := ulid.Make()
+			_, err := sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+				Dialect: nbrew.Dialect,
+				Format:  "INSERT INTO flash_sessions (session_id, payload) VALUES ({sessionID}, {payload})",
+				Values: []any{
+					sq.UUIDParam("sessionID", sessionID),
+					sq.BytesParam("payload", []byte(formErrmsgs.Encode())),
+				},
+			})
+			if err != nil {
+				http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{
+				Path:     r.URL.Path,
+				Name:     "form_errmsgs",
+				Value:    sessionID.String(),
+				Secure:   nbrew.Scheme == "https://",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
+			query := make(url.Values)
+			if r.Form.Has("dir") {
+				query.Set("dir", r.Form.Get("dir"))
+			}
+			r.URL.RawQuery = query.Encode()
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
+		}
+		// TODO: We need to validate "dir" and "filename" separately. Maybe
+		// split it out into either ("dir" and "filename") or "filepath"? If
+		// filepath is present, go with that. Otherwise use filepath :=
+		// path.Join(dir, filename). There is a possibility that we get a bad
+		// dir but the user can't do anything about it because they're not
+		// savvy enough to edit the query string directly (we're not exposing
+		// dir as a HTML form input field). Maybe if the GET request notices
+		// dir is not valid, it scrubs the dir query param and the form falls
+		// back to "filepath" mode? Yes, do that. That way, we don't ever need
+		// to expose error messages on the dir field because if present it's
+		// always valid (otherwise it would be scrubbed).
+		//
+		// And if the POST side receives a bad dir, it joins the dir and the
+		// filename and redirects to a form without "dir" (in "filepath" mode).
+		name := strings.Trim(path.Clean(path.Join(r.Form.Get("dir"), r.Form.Get("name"))), "/")
+		segment, stack, _ := strings.Cut(name, "/")
+		switch segment {
+		case "posts", "pages", "templates", "assets", "notes":
+			break
+		default:
+			formErrmsgs.Set("dir", fmt.Sprintf("invalid name %q: must start with posts, pages, templates, assets or notes", name))
+			redirect(w, r)
+			return
+		}
+		for ; segment != ""; segment, stack, _ = strings.Cut(stack, "/") {
+		}
 		// Step 1: Validate the name (starts with posts, notes, pages, templates or assets) (no forbidden characters)
 		// Step 2: Validate the name format. (the right number of segments, the right file extensions) (if postID or noteID is missing, here is the step to automatically generate a new one)
 		// Step 3: OpenWriter and close it immediately, then redirect the user to the corresponding resource path.

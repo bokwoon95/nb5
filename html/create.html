@@ -15,7 +15,8 @@
     <p><input type="hidden" name="dir" value="{{ .dir }}">
     <p>Creating file for directory: {{ .dir }}
     {{- end }}
-    {{ $nameErrMsgs := index .FormErrMsgs "name" }}
+    {{ .FormErrmsgs.Get "name" }}
+    {{ .NameErrmsg }}
     <p><label>Filename: <input name="name" required></label>
     <p><button>Create file</button>
     {{- with $errmsgs := index .FlashData.ErrMsgs "name" }}
