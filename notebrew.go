@@ -34,11 +34,11 @@ var bufPool = sync.Pool{
 // TODO: Use a gzipPool with compression level 4 instead of instantiating a new gzipWriter every time.
 var gzipPool sync.Pool
 
-// ErrNotWritable indicates that the filesystem cannot be written to.
+// ErrUnwritable indicates that the filesystem cannot be written to.
 //
 // It is returned by the functions OpenWriter, RemoveAll and WalkDir to
 // indicate that the underlying fs.FS does not support the method.
-var ErrNotWritable = errors.New("filesystem is not writable")
+var ErrUnwritable = errors.New("filesystem cannot be written to")
 
 // Notebrew represents a notebrew instance.
 type Notebrew struct {
@@ -118,7 +118,7 @@ func OpenWriter(fsys fs.FS, name string) (io.WriteCloser, error) {
 	if fsys, ok := fsys.(WriteFS); ok {
 		return fsys.OpenWriter(name)
 	}
-	return nil, ErrNotWritable
+	return nil, ErrUnwritable
 }
 
 // WriteFile writes the data into a file in the file system.
@@ -143,7 +143,7 @@ func MkdirAll(fsys fs.FS, path string, perm fs.FileMode) error {
 	if fsys, ok := fsys.(MkdirAllFS); ok {
 		return fsys.MkdirAll(path, perm)
 	}
-	return ErrNotWritable
+	return ErrUnwritable
 }
 
 // RemoveAll removes all files from the file system with prefix matching the
@@ -152,7 +152,7 @@ func RemoveAll(fsys fs.FS, path string) error {
 	if fsys, ok := fsys.(RemoveAllFS); ok {
 		return fsys.RemoveAll(path)
 	}
-	return ErrNotWritable
+	return ErrUnwritable
 }
 
 // TODO: Document this.
@@ -160,7 +160,7 @@ func Move(fsys fs.FS, oldpath, newpath string) error {
 	if fsys, ok := fsys.(MoveFS); ok {
 		return fsys.Move(oldpath, newpath)
 	}
-	return ErrNotWritable
+	return ErrUnwritable
 }
 
 func (nbrew *Notebrew) IsKeyViolation(err error) bool {
@@ -506,6 +506,11 @@ func validateName(name string) error {
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, siteName string) {
+	// flash_data
+	type FlashData struct {
+		ErrMsgs map[string][]string
+		Dir     string
+	}
 	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
 	if segment != "" {
 		nbrew.notFound(w, r)
