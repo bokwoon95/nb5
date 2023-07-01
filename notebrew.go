@@ -527,8 +527,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			return
 		}
 		buf := bufPool.Get().(*bytes.Buffer)
-		defer bufPool.Put(buf)
 		buf.Reset()
+		defer bufPool.Put(buf)
 		err = tmpl.Execute(buf, map[string]any{
 			"dir": r.Form.Get("dir"),
 		})
