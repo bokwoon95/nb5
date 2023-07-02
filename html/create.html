@@ -12,10 +12,10 @@
     <p id="responseCode" value="2">[SUCCESS] Password reset successfully. Please login using your new credentials.
     {{- end }}
 
-    .FolderPath .FileName .FilePath
     {{- if .FolderPath }}
     <p><input type="hidden" name="folder_path" value="{{ .FolderPath }}">
     <p>Creating file in folder: {{ .FolderPath }}
+    {{- else }}
     {{- end }}
     <p><label>File name: <input name="file_name" required></label>
     <p><button>Create file</button>

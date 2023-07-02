@@ -525,10 +525,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	}
 	if r.Method == "GET" {
 		templateData := struct {
-			Dir         string
+			FolderPath  string
 			FormErrmsgs url.Values
 		}{
-			Dir: r.Form.Get("dir"),
+			FolderPath: r.Form.Get("folder_path"),
 		}
 		cookie, _ := r.Cookie("form_errmsgs")
 		if cookie != nil {
@@ -557,7 +557,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 					}
 					return result
 				})
-				if err != nil {
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
 					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
 					return
 				}
