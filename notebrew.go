@@ -590,6 +590,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf.WriteTo(w)
 		return
 	}
+	// Folder path
+	// File name
+	// File path
+	// dir file path
 	if r.Method == "POST" {
 		formErrmsgs := make(url.Values)
 		redirect := func(w http.ResponseWriter, r *http.Request) {
