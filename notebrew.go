@@ -523,25 +523,20 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	if err != nil {
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
+	type TemplateData struct {
+		FolderPath  string
+		FilePath    string
+		FileName    string
+		FormErrmsgs url.Values
+	}
 	switch r.Method {
 	case "GET":
-		var templateData struct {
-			FolderPath  string
-			FormErrmsgs url.Values
-		}
-		templateData.FolderPath = r.Form.Get("folder_path")
-		err := validatePath(templateData.FolderPath)
-		if err != nil {
-			r.Form.Del("folder_path")
-			r.URL.RawQuery = r.Form.Encode()
-			http.Redirect(w, r, r.URL.String(), http.StatusFound)
-			return
-		}
-		cookie, _ := r.Cookie("form_errmsgs")
+		var templateData TemplateData
+		cookie, _ := r.Cookie("flash_session_id")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "form_errmsgs",
+				Name:     "flash_session_id",
 				Value:    "",
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
@@ -550,6 +545,15 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			})
 			sessionID, err := ulid.Parse(cookie.Value)
 			if err == nil {
+				defer func() {
+					sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+						Dialect: nbrew.Dialect,
+						Format:  "DELETE FROM flash_sessions WHERE session_id = {sessionID}",
+						Values: []any{
+							sq.UUIDParam("sessionID", sessionID),
+						},
+					})
+				}()
 				templateData.FormErrmsgs, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
 					Dialect: nbrew.Dialect,
 					Format:  "SELECT {*} FROM flash_sessions WHERE session_id = {sessionID}",
@@ -568,18 +572,19 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
 					return
 				}
-				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
-					Dialect: nbrew.Dialect,
-					Format:  "DELETE FROM flash_sessions WHERE session_id = {sessionID}",
-					Values: []any{
-						sq.UUIDParam("sessionID", sessionID),
-					},
-				})
 				if err != nil {
 					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
 					return
 				}
 			}
+		}
+		templateData.FolderPath = r.Form.Get("folder_path")
+		err := validatePath(templateData.FolderPath)
+		if err != nil {
+			r.Form.Del("folder_path")
+			r.URL.RawQuery = r.Form.Encode()
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			return
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
@@ -596,7 +601,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		buf.WriteTo(w)
 	case "POST":
-		redirect := func(w http.ResponseWriter, r *http.Request, formErrmsgs url.Values) {
+		redirect := func(w http.ResponseWriter, r *http.Request, uri string, formErrmsgs url.Values) {
 			sessionID := ulid.Make()
 			_, err := sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 				Dialect: nbrew.Dialect,
@@ -618,14 +623,25 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 			})
-			query := make(url.Values)
-			if r.Form.Has("dir") {
-				query.Set("dir", r.Form.Get("dir"))
-			}
-			r.URL.RawQuery = query.Encode()
-			http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			http.Redirect(w, r, uri, http.StatusFound)
 		}
 		formErrmsgs := make(url.Values)
+		var folderPath, filePath, fileName string
+		if r.Form.Has("folder_path") {
+			folderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")))
+			fileName = strings.Trim(path.Clean(r.Form.Get("file_name")))
+			filePath = path.Join(folderPath, fileName)
+			err := validatePath(folderPath)
+			if err != nil {
+				r.Form.Del("folder_path")
+				r.URL.RawQuery = r.Form.Encode()
+				formErrmsgs.Set("file_path")
+				redirect(w, r, r.URL.String(), formErrmsgs)
+				return
+			}
+		} else {
+			filePath = strings.Trim(path.Clean(r.Form.Get("file_path")))
+		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
 		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
 		if r.Form.Has("folder_path") {
