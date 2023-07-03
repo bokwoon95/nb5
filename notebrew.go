@@ -633,12 +633,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				w.Write(b)
 				return
 			}
-			if data.Errmsgs.Has("folder_path") {
-				http.Error(w, fmt.Sprintf("400 Bad Request: %s", data.Errmsgs.Get("folder_path")), http.StatusBadRequest)
-				return
-			}
 			if len(data.Errmsgs) == 0 {
 				// TODO: means no errors, 302 redirect to resource.
+				return
+			}
+			if data.Errmsgs.Has("folder_path") {
+				http.Error(w, fmt.Sprintf("400 Bad Request: %s", data.Errmsgs.Get("folder_path")), http.StatusBadRequest)
 				return
 			}
 			queryParams := make(url.Values)
