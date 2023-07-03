@@ -52,10 +52,7 @@ type USERS struct {
 type SESSIONS struct {
 	sq.TableStruct
 	SESSION_TOKEN_HASH sq.BinaryField `ddl:"mysql:type=BINARY(40) primarykey"`
-	SESSION_TOKEN      sq.BinaryField `ddl:"mysql:type=BINARY(24)"`
-	LOGIN_TOKEN_HASH   sq.BinaryField `ddl:"mysql:type=BINARY(40) unique"`
-	DOMAINS_TO_LOGIN   sq.JSONField
-	USER_ID            sq.UUIDField `ddl:"notnull references={users onupdate=cascade index}"`
+	USER_ID            sq.UUIDField   `ddl:"notnull references={users onupdate=cascade index}"`
 }
 
 type SITES struct {
@@ -66,8 +63,8 @@ type SITES struct {
 	USER_ID   sq.UUIDField `ddl:"notnull references={users onupdate=cascade index}"`
 }
 
-type FLASH_SESSIONS struct {
+type FLASH_MESSAGES struct {
 	sq.TableStruct
-	SESSION_ID sq.UUIDField `ddl:"primarykey"`
-	PAYLOAD    sq.BinaryField
+	MESSAGE_TOKEN_HASH sq.BinaryField `ddl:"mysql:type=BINARY(40) primarykey"`
+	PAYLOAD            sq.JSONField
 }

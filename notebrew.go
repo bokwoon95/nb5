@@ -2,8 +2,12 @@ package nb5
 
 import (
 	"bytes"
+	"crypto/rand"
 	"database/sql"
 	"embed"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -17,14 +21,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"text/template/parse"
+	"time"
 	"unicode/utf8"
 
 	"github.com/bokwoon95/sq"
-	"github.com/oklog/ulid/v2"
+	"golang.org/x/crypto/blake2b"
+	"golang.org/x/exp/slog"
 )
 
 //go:embed html static
@@ -75,6 +80,8 @@ type Notebrew struct {
 	ErrorCode func(error) string
 
 	CompressGeneratedHTML bool
+
+	Logger *slog.Logger
 }
 
 // WriteFS is the interface implemented by a file system that can be written
@@ -204,12 +211,6 @@ func (nbrew *Notebrew) IsForeignKeyViolation(err error) bool {
 	default:
 		return false
 	}
-}
-
-func annotateCaller(err error) string {
-	_, file, line, _ := runtime.Caller(1)
-	errmsg := filepath.Base(file) + ":" + strconv.Itoa(line) + ": " + err.Error()
-	return errmsg
 }
 
 type dirFS string
@@ -483,7 +484,7 @@ func validatePath(path string) error {
 	for name != "" {
 		err := validateName(name)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s: %w", name, err)
 		}
 		name, names, _ = strings.Cut(strings.Trim(names, "/"), "/")
 	}
@@ -493,7 +494,7 @@ func validatePath(path string) error {
 func validateName(name string) error {
 	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
-		return fmt.Errorf("no uppercase letters [A-Z] allowed", name)
+		return fmt.Errorf("no uppercase letters [A-Z] allowed")
 	}
 	i = strings.IndexAny(name, " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~")
 	if i > 0 {
@@ -510,6 +511,17 @@ func validateName(name string) error {
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
+	type Data struct {
+		FolderPath string     `json:"folder_path,omitempty"`
+		FileName   string     `json:"file_name,omitempty"`
+		FilePath   string     `json:"file_path,omitempty"`
+		Errmsgs    url.Values `json:"errmsgs,omitempty"`
+	}
+	logger := nbrew.Logger.With(
+		slog.String("method", r.Method),
+		slog.String("url", r.URL.String()),
+		slog.String("sitePrefix", sitePrefix),
+	)
 	if nbrew.DB == nil {
 		nbrew.notFound(w, r)
 		return
@@ -523,141 +535,202 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	if err != nil {
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
-	type TemplateData struct {
-		FolderPath  string
-		FilePath    string
-		FileName    string
-		FormErrmsgs url.Values
-	}
 	switch r.Method {
 	case "GET":
-		var templateData TemplateData
-		cookie, _ := r.Cookie("flash_session_id")
+		var data Data
+		cookie, _ := r.Cookie("flash_session")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "flash_session_id",
+				Name:     "flash_session",
 				Value:    "",
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				MaxAge:   -1,
 			})
-			sessionID, err := ulid.Parse(cookie.Value)
+			sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
 			if err == nil {
-				defer func() {
-					sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+				var sessionTokenHash [8 + blake2b.Size256]byte
+				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+				copy(sessionTokenHash[:8], sessionToken[:8])
+				copy(sessionTokenHash[8:], checksum[:])
+				createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionToken[:8])), 0)
+				if time.Now().Sub(createdAt) <= 5*time.Minute {
+					payload, err := sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
 						Dialect: nbrew.Dialect,
-						Format:  "DELETE FROM flash_sessions WHERE session_id = {sessionID}",
+						Format:  "SELECT {*} FROM flash_sessions WHERE session_token_hash = {sessionTokenHash}",
 						Values: []any{
-							sq.UUIDParam("sessionID", sessionID),
+							sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 						},
+					}, func(row *sq.Row) []byte {
+						return row.Bytes("payload")
 					})
-				}()
-				templateData.FormErrmsgs, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
-					Dialect: nbrew.Dialect,
-					Format:  "SELECT {*} FROM flash_sessions WHERE session_id = {sessionID}",
-					Values: []any{
-						sq.UUIDParam("sessionID", sessionID),
-					},
-				}, func(row *sq.Row) (result url.Values) {
-					payload := row.String("payload")
-					result, err = url.ParseQuery(payload)
 					if err != nil {
-						panic(err)
+						logger.Error(err.Error())
+					} else {
+						err = json.Unmarshal(payload, &data)
+						if err != nil {
+							logger.Error(err.Error())
+						}
 					}
-					return result
-				})
-				if err != nil && !errors.Is(err, sql.ErrNoRows) {
-					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
-					return
 				}
+				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+					Dialect: nbrew.Dialect,
+					Format:  "DELETE FROM flash_sessions WHERE session_token_hash = {sessionTokenHash}",
+					Values: []any{
+						sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+					},
+				})
 				if err != nil {
-					http.Error(w, annotateCaller(err), http.StatusInternalServerError)
-					return
+					logger.Error(err.Error())
 				}
 			}
 		}
-		templateData.FolderPath = r.Form.Get("folder_path")
-		err := validatePath(templateData.FolderPath)
+		data.FolderPath = r.Form.Get("folder_path")
+		err = validatePath(data.FolderPath)
 		if err != nil {
-			r.Form.Del("folder_path")
-			r.URL.RawQuery = r.Form.Encode()
-			http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			redirectURL := *r.URL
+			redirectURL.RawQuery = ""
+			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 			return
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
-			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		buf := bufPool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufPool.Put(buf)
-		err = tmpl.Execute(buf, &templateData)
+		err = tmpl.Execute(buf, &data)
 		if err != nil {
-			http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		buf.WriteTo(w)
 	case "POST":
-		redirect := func(w http.ResponseWriter, r *http.Request, uri string, formErrmsgs url.Values) {
-			sessionID := ulid.Make()
-			_, err := sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+		writeResponse := func(w http.ResponseWriter, r *http.Request, data Data) {
+			isJSON := false
+			for _, contentType := range r.Header["Accept"] {
+				if contentType == "text/html" {
+					break
+				}
+				if contentType == "application/json" {
+					isJSON = true
+					break
+				}
+			}
+			if isJSON {
+				b, err := json.Marshal(data)
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				w.Write(b)
+				return
+			}
+			if data.Errmsgs.Has("folder_path") {
+				http.Error(w, fmt.Sprintf("400 Bad Request: %s", data.Errmsgs.Get("folder_path")), http.StatusBadRequest)
+				return
+			}
+			if len(data.Errmsgs) == 0 {
+				// TODO: means no errors, 302 redirect to resource.
+				return
+			}
+			queryParams := make(url.Values)
+			if r.Form.Has("folder_path") {
+				queryParams.Set("folder_path", r.Form.Get("folder_path"))
+			}
+			redirectURL := *r.URL
+			redirectURL.RawQuery = queryParams.Encode()
+			var sessionToken [8 + 16]byte
+			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
+			_, err = rand.Read(sessionToken[8:])
+			if err != nil {
+				logger.Error(err.Error())
+				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+				return
+			}
+			var sessionTokenHash [8 + blake2b.Size256]byte
+			checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+			copy(sessionTokenHash[:8], sessionToken[:8])
+			copy(sessionTokenHash[8:], checksum[:])
+			payload, err := json.Marshal(data)
+			if err != nil {
+				logger.Error(err.Error())
+				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+				return
+			}
+			_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 				Dialect: nbrew.Dialect,
-				Format:  "INSERT INTO flash_sessions (session_id, payload) VALUES ({sessionID}, {payload})",
+				Format:  "INSERT INTO flash_sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
 				Values: []any{
-					sq.UUIDParam("sessionID", sessionID),
-					sq.BytesParam("payload", []byte(formErrmsgs.Encode())),
+					sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+					sq.BytesParam("payload", payload),
 				},
 			})
 			if err != nil {
-				http.Error(w, annotateCaller(err), http.StatusInternalServerError)
+				logger.Error(err.Error())
+				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "form_errmsgs",
-				Value:    sessionID.String(),
+				Name:     "flash_session",
+				Value:    strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0"),
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 			})
-			http.Redirect(w, r, uri, http.StatusFound)
+			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 		}
-		formErrmsgs := make(url.Values)
-		var folderPath, filePath, fileName string
+		var data Data
+		data.Errmsgs = make(url.Values)
 		if r.Form.Has("folder_path") {
-			folderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")))
-			fileName = strings.Trim(path.Clean(r.Form.Get("file_name")))
-			filePath = path.Join(folderPath, fileName)
-			err := validatePath(folderPath)
+			data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
+			if data.FolderPath == "" {
+				data.Errmsgs.Set("folder_path", "cannot be empty")
+				writeResponse(w, r, data)
+				return
+			}
+			err := validatePath(data.FolderPath)
 			if err != nil {
-				r.Form.Del("folder_path")
-				r.URL.RawQuery = r.Form.Encode()
-				formErrmsgs.Set("file_path")
-				redirect(w, r, r.URL.String(), formErrmsgs)
+				data.Errmsgs.Set("folder_path", err.Error())
+				writeResponse(w, r, data)
+				return
+			}
+			data.FileName = strings.Trim(path.Clean(r.Form.Get("file_name")), "/")
+			if data.FileName == "" {
+				data.Errmsgs.Set("file_name", "cannot be empty")
+				writeResponse(w, r, data)
+				return
+			}
+			err = validateName(data.FileName)
+			if err != nil {
+				data.Errmsgs.Set("file_name", err.Error())
+				writeResponse(w, r, data)
 				return
 			}
 		} else {
-			filePath = strings.Trim(path.Clean(r.Form.Get("file_path")))
+			data.FilePath = strings.Trim(path.Clean(r.Form.Get("file_path")), "/")
+			if data.FilePath == "" {
+				data.Errmsgs.Set("file_path", "cannot be empty")
+				writeResponse(w, r, data)
+			}
+			err = validatePath(data.FilePath)
+			if err != nil {
+				data.Errmsgs.Set("file_name", err.Error())
+				writeResponse(w, r, data)
+				return
+			}
 		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
 		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
-		if r.Form.Has("folder_path") {
-			folderPath := strings.Trim(path.Clean(r.Form.Get("folder_path")))
-			fileName := strings.Trim(path.Clean(r.Form.Get("file_name")))
-			filePath := path.Join(folderPath, fileName)
-			resource, _, _ := strings.Cut(folderPath, "/")
-			switch resource {
-			case "posts", "pages", "templates", "assets", "notes":
-				break
-			default:
-				formErrmsgs.Set("file_name", fmt.Sprintf(""))
-			}
-		} else {
-			filePath := strings.Trim(path.Clean(r.Form.Get("file_path")))
-		}
+
 		// TODO: We need to validate "dir" and "filename" separately. Maybe
 		// split it out into either ("dir" and "filename") or "filepath"? If
 		// filepath is present, go with that. Otherwise use filepath :=
@@ -672,16 +745,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		//
 		// And if the POST side receives a bad dir, it joins the dir and the
 		// filename and redirects to a form without "dir" (in "filepath" mode).
-		name := strings.Trim(path.Clean(path.Join(r.Form.Get("dir"), r.Form.Get("name"))), "/")
-		segment, stack, _ := strings.Cut(name, "/")
-		switch segment {
-		case "posts", "pages", "templates", "assets", "notes":
-			break
-		default:
-			formErrmsgs.Set("dir", fmt.Sprintf("invalid name %q: must start with posts, pages, templates, assets or notes", name))
-			redirect(w, r)
-			return
-		}
+
 		// Step 1: Validate the name (starts with posts, notes, pages, templates or assets) (no forbidden characters)
 		// Step 2: Validate the name format. (the right number of segments, the right file extensions) (if postID or noteID is missing, here is the step to automatically generate a new one)
 		// Step 3: OpenWriter and close it immediately, then redirect the user to the corresponding resource path.
