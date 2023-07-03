@@ -723,7 +723,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			err = validatePath(data.FilePath)
 			if err != nil {
-				data.Errmsgs.Set("file_name", err.Error())
+				data.Errmsgs.Set("file_path", err.Error())
 				writeResponse(w, r, data)
 				return
 			}
