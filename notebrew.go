@@ -477,37 +477,14 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-var invalidNames = map[string]struct{}{
-	"con": {}, "prn": {}, "aux": {}, "nul": {}, "com1": {}, "com2": {},
-	"com3": {}, "com4": {}, "com5": {}, "com6": {}, "com7": {}, "com8": {},
-	"com9": {}, "lpt1": {}, "lpt2": {}, "lpt3": {}, "lpt4": {}, "lpt5": {},
-	"lpt6": {}, "lpt7": {}, "lpt8": {}, "lpt9": {},
+var forbiddenNames = map[string]bool{
+	"con": true, "prn": true, "aux": true, "nul": true, "com1": true, "com2": true,
+	"com3": true, "com4": true, "com5": true, "com6": true, "com7": true, "com8": true,
+	"com9": true, "lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
+	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
 }
 
-func validateName(name string) error {
-	if name == "" {
-		return fmt.Errorf("name cannot be empty")
-	}
-	for _, c := range name {
-		if c > 127 {
-			continue
-		}
-		if c >= 'a' && c <= 'z' {
-			continue
-		}
-		if c >= '0' && c <= '9' {
-			continue
-		}
-		if c == '-' || c == '_' {
-			continue
-		}
-		return fmt.Errorf("invalid character: %c", c)
-	}
-	if _, ok := invalidNames[name]; ok {
-		return fmt.Errorf("invalid name: %s", name)
-	}
-	return nil
-}
+const forbiddenChars = " !\";#$%&'()*+,./:;<>=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\\^`{}|~"
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	if nbrew.DB == nil {
@@ -523,12 +500,18 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	if err != nil {
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
-	if r.Method == "GET" {
-		templateData := struct {
+	switch r.Method {
+	case "GET":
+		var templateData struct {
 			FolderPath  string
 			FormErrmsgs url.Values
-		}{
-			FolderPath: r.Form.Get("folder_path"),
+		}
+		templateData.FolderPath = r.Form.Get("folder_path")
+		if strings.ContainsAny(templateData.FolderPath, forbiddenChars) || forbiddenNames[templateData.FolderPath] {
+			r.Form.Del("folder_path")
+			r.URL.RawQuery = r.Form.Encode()
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			return
 		}
 		cookie, _ := r.Cookie("form_errmsgs")
 		if cookie != nil {
@@ -588,15 +571,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			return
 		}
 		buf.WriteTo(w)
-		return
-	}
-	// Folder path
-	// File name
-	// File path
-	// dir file path
-	if r.Method == "POST" {
-		formErrmsgs := make(url.Values)
-		redirect := func(w http.ResponseWriter, r *http.Request) {
+	case "POST":
+		redirect := func(w http.ResponseWriter, r *http.Request, formErrmsgs url.Values) {
 			sessionID := ulid.Make()
 			_, err := sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 				Dialect: nbrew.Dialect,
@@ -639,6 +615,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		//
 		// And if the POST side receives a bad dir, it joins the dir and the
 		// filename and redirects to a form without "dir" (in "filepath" mode).
+		formErrmsgs := make(url.Values)
 		name := strings.Trim(path.Clean(path.Join(r.Form.Get("dir"), r.Form.Get("name"))), "/")
 		segment, stack, _ := strings.Cut(name, "/")
 		switch segment {
@@ -654,7 +631,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// Step 1: Validate the name (starts with posts, notes, pages, templates or assets) (no forbidden characters)
 		// Step 2: Validate the name format. (the right number of segments, the right file extensions) (if postID or noteID is missing, here is the step to automatically generate a new one)
 		// Step 3: OpenWriter and close it immediately, then redirect the user to the corresponding resource path.
-		return
+	default:
+		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
-	http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 }

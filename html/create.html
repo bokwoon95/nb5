@@ -6,17 +6,33 @@
 <link rel="stylesheet" href="/admin/static/styles.css">
 <title>Create file</title>
 <form method="post">
-    {{- if eq .ResponseCode 1 }}
-    <p id="responseCode" value="1">[ERROR] Incorrect email or password.
-    {{- else if eq .ResponseCode 2 }}
-    <p id="responseCode" value="2">[SUCCESS] Password reset successfully. Please login using your new credentials.
-    {{- end }}
-
     {{- if .FolderPath }}
-    <p><input type="hidden" name="folder_path" value="{{ .FolderPath }}">
-    <p>Creating file in folder: {{ .FolderPath }}
+    <input type="hidden" name="folder_path" value="{{ .FolderPath }}">
+    <div>Creating file in folder: {{ .FolderPath }}</div>
+    <div>
+        <label for="file_name" class="db">File name</label>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
+        {{- with $errmsgs := .FormErrmsgs "file_name" }}
+        <ul>
+            {{- range $errmsg := $errmsgs }}
+            <li>{{ $errmsg }}
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
     {{- else }}
+    <div>
+        <label for="file_path" class="db">File path</label>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
+        {{- with $errmsgs := .FormErrmsgs "file_path" }}
+        <ul>
+            {{- range $errmsg := $errmsgs }}
+            <li>{{ $errmsg }}
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
     {{- end }}
-    <p><label>File name: <input name="file_name" required></label>
-    <p><button>Create file</button>
 </form>
