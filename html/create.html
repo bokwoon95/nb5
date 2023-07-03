@@ -11,8 +11,8 @@
     <div>Creating file in folder: {{ .FolderPath }}</div>
     <div>
         <label for="file_name" class="db">File name</label>
-        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
         {{- with $errmsgs := .FormErrmsgs "file_name" }}
         <ul>
             {{- range $errmsg := $errmsgs }}
@@ -24,8 +24,8 @@
     {{- else }}
     <div>
         <label for="file_path" class="db">File path</label>
-        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
         {{- with $errmsgs := .FormErrmsgs "file_path" }}
         <ul>
             {{- range $errmsg := $errmsgs }}

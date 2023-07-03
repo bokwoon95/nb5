@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"text/template/parse"
+	"unicode/utf8"
 
 	"github.com/bokwoon95/sq"
 	"github.com/oklog/ulid/v2"
@@ -477,14 +478,36 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-var forbiddenNames = map[string]bool{
-	"con": true, "prn": true, "aux": true, "nul": true, "com1": true, "com2": true,
-	"com3": true, "com4": true, "com5": true, "com6": true, "com7": true, "com8": true,
-	"com9": true, "lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
-	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
+func validatePath(path string) error {
+	name, names, _ := strings.Cut(strings.Trim(path, "/"), "/")
+	for name != "" {
+		err := validateName(name)
+		if err != nil {
+			return err
+		}
+		name, names, _ = strings.Cut(strings.Trim(names, "/"), "/")
+	}
+	return nil
 }
 
-const forbiddenChars = " !\";#$%&'()*+,./:;<>=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\\^`{}|~"
+func validateName(name string) error {
+	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	if i > 0 {
+		return fmt.Errorf("no uppercase letters [A-Z] allowed", name)
+	}
+	i = strings.IndexAny(name, " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~")
+	if i > 0 {
+		char, _ := utf8.DecodeRuneInString(name[i:])
+		return fmt.Errorf("forbidden character: %c", char)
+	}
+	switch name {
+	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
+		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+		"lpt6", "lpt7", "lpt8", "lpt9":
+		return fmt.Errorf("forbidden name")
+	}
+	return nil
+}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	if nbrew.DB == nil {
@@ -507,7 +530,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			FormErrmsgs url.Values
 		}
 		templateData.FolderPath = r.Form.Get("folder_path")
-		if strings.ContainsAny(templateData.FolderPath, forbiddenChars) || forbiddenNames[templateData.FolderPath] {
+		err := validatePath(templateData.FolderPath)
+		if err != nil {
 			r.Form.Del("folder_path")
 			r.URL.RawQuery = r.Form.Encode()
 			http.Redirect(w, r, r.URL.String(), http.StatusFound)
@@ -601,6 +625,23 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			r.URL.RawQuery = query.Encode()
 			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
+		formErrmsgs := make(url.Values)
+		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
+		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
+		if r.Form.Has("folder_path") {
+			folderPath := strings.Trim(path.Clean(r.Form.Get("folder_path")))
+			fileName := strings.Trim(path.Clean(r.Form.Get("file_name")))
+			filePath := path.Join(folderPath, fileName)
+			resource, _, _ := strings.Cut(folderPath, "/")
+			switch resource {
+			case "posts", "pages", "templates", "assets", "notes":
+				break
+			default:
+				formErrmsgs.Set("file_name", fmt.Sprintf(""))
+			}
+		} else {
+			filePath := strings.Trim(path.Clean(r.Form.Get("file_path")))
+		}
 		// TODO: We need to validate "dir" and "filename" separately. Maybe
 		// split it out into either ("dir" and "filename") or "filepath"? If
 		// filepath is present, go with that. Otherwise use filepath :=
@@ -615,7 +656,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		//
 		// And if the POST side receives a bad dir, it joins the dir and the
 		// filename and redirects to a form without "dir" (in "filepath" mode).
-		formErrmsgs := make(url.Values)
 		name := strings.Trim(path.Clean(path.Join(r.Form.Get("dir"), r.Form.Get("name"))), "/")
 		segment, stack, _ := strings.Cut(name, "/")
 		switch segment {
@@ -625,8 +665,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			formErrmsgs.Set("dir", fmt.Sprintf("invalid name %q: must start with posts, pages, templates, assets or notes", name))
 			redirect(w, r)
 			return
-		}
-		for ; segment != ""; segment, stack, _ = strings.Cut(stack, "/") {
 		}
 		// Step 1: Validate the name (starts with posts, notes, pages, templates or assets) (no forbidden characters)
 		// Step 2: Validate the name format. (the right number of segments, the right file extensions) (if postID or noteID is missing, here is the step to automatically generate a new one)
