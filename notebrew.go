@@ -538,30 +538,30 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	switch r.Method {
 	case "GET":
 		var data Data
-		cookie, _ := r.Cookie("flash_session")
+		cookie, _ := r.Cookie("flash_message")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "flash_session",
+				Name:     "flash_message",
 				Value:    "",
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				MaxAge:   -1,
 			})
-			sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
+			messageToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
 			if err == nil {
-				var sessionTokenHash [8 + blake2b.Size256]byte
-				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-				copy(sessionTokenHash[:8], sessionToken[:8])
-				copy(sessionTokenHash[8:], checksum[:])
-				createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionToken[:8])), 0)
+				var messageTokenHash [8 + blake2b.Size256]byte
+				checksum := blake2b.Sum256([]byte(messageToken[8:]))
+				copy(messageTokenHash[:8], messageToken[:8])
+				copy(messageTokenHash[8:], checksum[:])
+				createdAt := time.Unix(int64(binary.BigEndian.Uint64(messageToken[:8])), 0)
 				if time.Now().Sub(createdAt) <= 5*time.Minute {
 					payload, err := sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
 						Dialect: nbrew.Dialect,
-						Format:  "SELECT {*} FROM flash_sessions WHERE session_token_hash = {sessionTokenHash}",
+						Format:  "SELECT {*} FROM flash_messages WHERE message_token_hash = {messageTokenHash}",
 						Values: []any{
-							sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+							sq.BytesParam("messageTokenHash", messageTokenHash[:]),
 						},
 					}, func(row *sq.Row) []byte {
 						return row.Bytes("payload")
@@ -577,9 +577,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 					Dialect: nbrew.Dialect,
-					Format:  "DELETE FROM flash_sessions WHERE session_token_hash = {sessionTokenHash}",
+					Format:  "DELETE FROM flash_messages WHERE message_token_hash = {messageTokenHash}",
 					Values: []any{
-						sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+						sq.BytesParam("messageTokenHash", messageTokenHash[:]),
 					},
 				})
 				if err != nil {
@@ -647,18 +647,18 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			redirectURL := *r.URL
 			redirectURL.RawQuery = queryParams.Encode()
-			var sessionToken [8 + 16]byte
-			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
-			_, err = rand.Read(sessionToken[8:])
+			var messageToken [8 + 16]byte
+			binary.BigEndian.PutUint64(messageToken[:8], uint64(time.Now().Unix()))
+			_, err = rand.Read(messageToken[8:])
 			if err != nil {
 				logger.Error(err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
-			var sessionTokenHash [8 + blake2b.Size256]byte
-			checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-			copy(sessionTokenHash[:8], sessionToken[:8])
-			copy(sessionTokenHash[8:], checksum[:])
+			var messageTokenHash [8 + blake2b.Size256]byte
+			checksum := blake2b.Sum256([]byte(messageToken[8:]))
+			copy(messageTokenHash[:8], messageToken[:8])
+			copy(messageTokenHash[8:], checksum[:])
 			payload, err := json.Marshal(data)
 			if err != nil {
 				logger.Error(err.Error())
@@ -667,9 +667,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 				Dialect: nbrew.Dialect,
-				Format:  "INSERT INTO flash_sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
+				Format:  "INSERT INTO flash_messages (message_token_hash, payload) VALUES ({messageTokenHash}, {payload})",
 				Values: []any{
-					sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+					sq.BytesParam("messageTokenHash", messageTokenHash[:]),
 					sq.BytesParam("payload", payload),
 				},
 			})
@@ -680,8 +680,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "flash_session",
-				Value:    strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0"),
+				Name:     "flash_message",
+				Value:    strings.TrimLeft(hex.EncodeToString(messageToken[:]), "0"),
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
