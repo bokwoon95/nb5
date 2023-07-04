@@ -81,8 +81,6 @@ type Notebrew struct {
 	ErrorCode func(error) string
 
 	CompressGeneratedHTML bool
-
-	Logger *slog.Logger
 }
 
 // WriteFS is the interface implemented by a file system that can be written
@@ -515,8 +513,8 @@ type contextKey struct{}
 
 var loggerKey = &contextKey{}
 
-func (nbrew *Notebrew) WithAttrs(r *http.Request, attrs ...slog.Attr) *http.Request {
-	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+func WithAttrs(ctx context.Context, attrs ...slog.Attr) context.Context {
+	logger, ok := ctx.Value(loggerKey).(*slog.Logger)
 	if !ok {
 		logger = slog.Default()
 	}
@@ -524,15 +522,15 @@ func (nbrew *Notebrew) WithAttrs(r *http.Request, attrs ...slog.Attr) *http.Requ
 	for i, attr := range attrs {
 		args[i] = attr
 	}
-	return r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
+	return context.WithValue(ctx, loggerKey, logger)
 }
 
-func (nbrew *Notebrew) Log(r *http.Request, level slog.Level, msg string, attrs ...slog.Attr) {
-	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
+	logger, ok := ctx.Value(loggerKey).(*slog.Logger)
 	if !ok {
 		logger = slog.Default()
 	}
-	logger.LogAttrs(r.Context(), level, msg, attrs...)
+	logger.LogAttrs(ctx, level, msg, attrs...)
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
@@ -542,11 +540,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		FilePath   string     `json:"file_path,omitempty"`
 		Errmsgs    url.Values `json:"errmsgs,omitempty"`
 	}
-	logger := nbrew.Logger.With(
+	r = r.WithContext(WithAttrs(
+		r.Context(),
 		slog.String("method", r.Method),
 		slog.String("url", r.URL.String()),
 		slog.String("sitePrefix", sitePrefix),
-	)
+	))
 	if nbrew.DB == nil {
 		nbrew.notFound(w, r)
 		return
@@ -592,11 +591,11 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 						return row.Bytes("payload")
 					})
 					if err != nil {
-						logger.Error(err.Error())
+						Log(r.Context(), slog.LevelError, err.Error())
 					} else {
 						err = json.Unmarshal(payload, &data)
 						if err != nil {
-							logger.Error(err.Error())
+							Log(r.Context(), slog.LevelError, err.Error())
 						}
 					}
 				}
@@ -608,7 +607,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 					},
 				})
 				if err != nil {
-					logger.Error(err.Error())
+					Log(r.Context(), slog.LevelError, err.Error())
 				}
 			}
 		}
@@ -622,7 +621,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
-			logger.Error(err.Error())
+			Log(r.Context(), slog.LevelError, err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -631,7 +630,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		defer bufPool.Put(buf)
 		err = tmpl.Execute(buf, &data)
 		if err != nil {
-			logger.Error(err.Error())
+			Log(r.Context(), slog.LevelError, err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -651,7 +650,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			if isJSON {
 				b, err := json.Marshal(data)
 				if err != nil {
-					logger.Error(err.Error())
+					Log(r.Context(), slog.LevelError, err.Error())
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 					return
 				}
@@ -676,7 +675,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			binary.BigEndian.PutUint64(messageToken[:8], uint64(time.Now().Unix()))
 			_, err = rand.Read(messageToken[8:])
 			if err != nil {
-				logger.Error(err.Error())
+				Log(r.Context(), slog.LevelError, err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
@@ -686,7 +685,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			copy(messageTokenHash[8:], checksum[:])
 			payload, err := json.Marshal(data)
 			if err != nil {
-				logger.Error(err.Error())
+				Log(r.Context(), slog.LevelError, err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
@@ -699,7 +698,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				},
 			})
 			if err != nil {
-				logger.Error(err.Error())
+				Log(r.Context(), slog.LevelError, err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
