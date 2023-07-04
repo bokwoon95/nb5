@@ -715,6 +715,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				writeResponse(w, r, data)
 				return
 			}
+			data.FilePath = path.Join(data.FolderPath, data.FileName)
 		} else {
 			data.FilePath = strings.Trim(path.Clean(r.Form.Get("file_path")), "/")
 			if data.FilePath == "" {
