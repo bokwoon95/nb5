@@ -534,12 +534,6 @@ func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) 
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
-	type Data struct {
-		FolderPath string     `json:"folder_path,omitempty"`
-		FileName   string     `json:"file_name,omitempty"`
-		FilePath   string     `json:"file_path,omitempty"`
-		Errmsgs    url.Values `json:"errmsgs,omitempty"`
-	}
 	r = r.WithContext(WithAttrs(
 		r.Context(),
 		slog.String("method", r.Method),
@@ -560,6 +554,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
 	// cookie: authentication_token=xxx; session_token=xxx;
+	type Data struct {
+		FolderPath string     `json:"folder_path,omitempty"`
+		FileName   string     `json:"file_name,omitempty"`
+		FilePath   string     `json:"file_path,omitempty"`
+		Errmsgs    url.Values `json:"errmsgs,omitempty"`
+	}
 	switch r.Method {
 	case "GET":
 		var data Data
@@ -665,6 +665,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			if len(response.Data.Errmsgs) == 0 {
 				// TODO: means no errors, 302 redirect to resource.
+				http.Redirect(w, r, "", http.StatusFound)
 				return
 			}
 			if response.StatusCode != 0 {
@@ -724,13 +725,15 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		if r.Form.Has("folder_path") {
 			response.Data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
 			if response.Data.FolderPath == "" {
-				response.Data.Errmsgs.Set("folder_path", "cannot be empty")
+				response.StatusCode = http.StatusBadRequest
+				response.Errmsg = "folder_path cannot be empty"
 				writeResponse(w, r, response)
 				return
 			}
 			err := validatePath(response.Data.FolderPath)
 			if err != nil {
-				response.Data.Errmsgs.Set("folder_path", err.Error())
+				response.StatusCode = http.StatusBadRequest
+				response.Errmsg = fmt.Sprintf("%s: %v", response.Data.FolderPath, err)
 				writeResponse(w, r, response)
 				return
 			}
@@ -765,6 +768,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		case "posts", "pages", "notes", "templates", "assets":
 			break
 		default:
+			response.StatusCode = http.StatusBadRequest
+			response.Errmsg = "path has to start with posts, pages, notes, templates or assets"
+			writeResponse(w, r, response)
 			return
 		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
