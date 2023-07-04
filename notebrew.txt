@@ -74,3 +74,17 @@ POST /create/posts/{category}/ => GET /posts/{category}/{postID}/
 POST /create/posts/{category}/{postID}/ => GET /posts/{category}/{postID}/
 
 POST /create/posts/{category}/ => GET /posts/
+
+reset_token
+authentication_token
+session_token
+
+sessions => session_token
+
+authentications => authentication_token_hash
+
+identifications => identity_token
+
+access_tokens => access_token
+
+a generic sessions table containing payload?

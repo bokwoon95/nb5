@@ -2,6 +2,7 @@ package nb5
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"embed"
@@ -510,6 +511,30 @@ func validateName(name string) error {
 	return nil
 }
 
+type contextKey struct{}
+
+var loggerKey = &contextKey{}
+
+func (nbrew *Notebrew) WithAttrs(r *http.Request, attrs ...slog.Attr) *http.Request {
+	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+	if !ok {
+		logger = slog.Default()
+	}
+	args := make([]any, len(attrs))
+	for i, attr := range attrs {
+		args[i] = attr
+	}
+	return r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
+}
+
+func (nbrew *Notebrew) Log(r *http.Request, level slog.Level, msg string, attrs ...slog.Attr) {
+	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+	if !ok {
+		logger = slog.Default()
+	}
+	logger.LogAttrs(r.Context(), level, msg, attrs...)
+}
+
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	type Data struct {
 		FolderPath string     `json:"folder_path,omitempty"`
@@ -729,6 +754,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		}
+		resource, _, _ := strings.Cut(data.FilePath, "/")
+		switch resource {
+		case "posts", "pages", "notes", "templates", "assets":
+			break
+		default:
+			return
+		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
 		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
 
@@ -754,3 +786,5 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
 }
+
+func (nbrew *Notebrew) newSession()
