@@ -582,19 +582,19 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				copy(sessionTokenHash[8:], checksum[:])
 				createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionToken[:8])), 0)
 				if time.Now().Sub(createdAt) <= 5*time.Minute {
-					payload, err := sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
+					b, err := sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
 						Dialect: nbrew.Dialect,
 						Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
 						Values: []any{
 							sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 						},
 					}, func(row *sq.Row) []byte {
-						return row.Bytes("payload")
+						return row.Bytes("data")
 					})
 					if err != nil {
 						Log(r.Context(), slog.LevelError, err.Error())
 					} else {
-						err = json.Unmarshal(payload, &data)
+						err = json.Unmarshal(b, &data)
 						if err != nil {
 							Log(r.Context(), slog.LevelError, err.Error())
 						}
@@ -765,8 +765,11 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		resource, _, _ := strings.Cut(response.Data.FilePath, "/")
 		switch resource {
-		case "posts", "pages", "notes", "templates", "assets":
-			break
+		case "posts":
+		case "pages":
+		case "notes":
+		case "templates":
+		case "assets":
 		default:
 			response.StatusCode = http.StatusBadRequest
 			response.Errmsg = "path has to start with posts, pages, notes, templates or assets"
