@@ -559,33 +559,34 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	if err != nil {
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
+	// cookie: authentication_token=xxx; session_token=xxx;
 	switch r.Method {
 	case "GET":
 		var data Data
-		cookie, _ := r.Cookie("flash_message")
+		cookie, _ := r.Cookie("session_token")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "flash_message",
+				Name:     "session_token",
 				Value:    "",
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				MaxAge:   -1,
 			})
-			messageToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
+			sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
 			if err == nil {
-				var messageTokenHash [8 + blake2b.Size256]byte
-				checksum := blake2b.Sum256([]byte(messageToken[8:]))
-				copy(messageTokenHash[:8], messageToken[:8])
-				copy(messageTokenHash[8:], checksum[:])
-				createdAt := time.Unix(int64(binary.BigEndian.Uint64(messageToken[:8])), 0)
+				var sessionTokenHash [8 + blake2b.Size256]byte
+				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+				copy(sessionTokenHash[:8], sessionToken[:8])
+				copy(sessionTokenHash[8:], checksum[:])
+				createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionToken[:8])), 0)
 				if time.Now().Sub(createdAt) <= 5*time.Minute {
 					payload, err := sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
 						Dialect: nbrew.Dialect,
-						Format:  "SELECT {*} FROM flash_messages WHERE message_token_hash = {messageTokenHash}",
+						Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
 						Values: []any{
-							sq.BytesParam("messageTokenHash", messageTokenHash[:]),
+							sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 						},
 					}, func(row *sq.Row) []byte {
 						return row.Bytes("payload")
@@ -601,9 +602,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 					Dialect: nbrew.Dialect,
-					Format:  "DELETE FROM flash_messages WHERE message_token_hash = {messageTokenHash}",
+					Format:  "DELETE FROM flash_sessions WHERE session_token_hash = {sessionTokenHash}",
 					Values: []any{
-						sq.BytesParam("messageTokenHash", messageTokenHash[:]),
+						sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 					},
 				})
 				if err != nil {
@@ -636,7 +637,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		buf.WriteTo(w)
 	case "POST":
-		writeResponse := func(w http.ResponseWriter, r *http.Request, data Data) {
+		type Response struct {
+			Data       Data   `json:"data"`
+			StatusCode int    `json:"status_code,omitempty"`
+			Errmsg     string `json:"errmsg,omitempty"`
+		}
+		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
 			isJSON := false
 			for _, contentType := range r.Header["Accept"] {
 				if contentType == "text/html" {
@@ -648,7 +654,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 			}
 			if isJSON {
-				b, err := json.Marshal(data)
+				b, err := json.Marshal(&response)
 				if err != nil {
 					Log(r.Context(), slog.LevelError, err.Error())
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -657,12 +663,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				w.Write(b)
 				return
 			}
-			if len(data.Errmsgs) == 0 {
+			if len(response.Data.Errmsgs) == 0 {
 				// TODO: means no errors, 302 redirect to resource.
 				return
 			}
-			if data.Errmsgs.Has("folder_path") {
-				http.Error(w, fmt.Sprintf("400 Bad Request: %s", data.Errmsgs.Get("folder_path")), http.StatusBadRequest)
+			if response.StatusCode >= 400 && response.StatusCode < 500 {
+				msg := fmt.Sprintf("%d %s: %s", response.StatusCode, http.StatusText(response.StatusCode), response.Errmsg)
+				http.Error(w, msg, response.StatusCode)
 				return
 			}
 			queryParams := make(url.Values)
@@ -671,19 +678,19 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			redirectURL := *r.URL
 			redirectURL.RawQuery = queryParams.Encode()
-			var messageToken [8 + 16]byte
-			binary.BigEndian.PutUint64(messageToken[:8], uint64(time.Now().Unix()))
-			_, err = rand.Read(messageToken[8:])
+			var sessionToken [8 + 16]byte
+			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
+			_, err = rand.Read(sessionToken[8:])
 			if err != nil {
 				Log(r.Context(), slog.LevelError, err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
-			var messageTokenHash [8 + blake2b.Size256]byte
-			checksum := blake2b.Sum256([]byte(messageToken[8:]))
-			copy(messageTokenHash[:8], messageToken[:8])
-			copy(messageTokenHash[8:], checksum[:])
-			payload, err := json.Marshal(data)
+			var sessionTokenHash [8 + blake2b.Size256]byte
+			checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+			copy(sessionTokenHash[:8], sessionToken[:8])
+			copy(sessionTokenHash[8:], checksum[:])
+			data, err := json.Marshal(&response.Data)
 			if err != nil {
 				Log(r.Context(), slog.LevelError, err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
@@ -691,10 +698,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 				Dialect: nbrew.Dialect,
-				Format:  "INSERT INTO flash_messages (message_token_hash, payload) VALUES ({messageTokenHash}, {payload})",
+				Format:  "INSERT INTO flash_sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
 				Values: []any{
-					sq.BytesParam("messageTokenHash", messageTokenHash[:]),
-					sq.BytesParam("payload", payload),
+					sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+					sq.BytesParam("data", data),
 				},
 			})
 			if err != nil {
@@ -704,8 +711,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "flash_message",
-				Value:    strings.TrimLeft(hex.EncodeToString(messageToken[:]), "0"),
+				Name:     "session_token",
+				Value:    strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0"),
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
@@ -772,7 +779,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// dir as a HTML form input field). Maybe if the GET request notices
 		// dir is not valid, it scrubs the dir query param and the form falls
 		// back to "filepath" mode? Yes, do that. That way, we don't ever need
-		// to expose error messages on the dir field because if present it's
+		// to expose error sessions on the dir field because if present it's
 		// always valid (otherwise it would be scrubbed).
 		//
 		// And if the POST side receives a bad dir, it joins the dir and the
