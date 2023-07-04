@@ -522,7 +522,7 @@ func WithAttrs(ctx context.Context, attrs ...slog.Attr) context.Context {
 	for i, attr := range attrs {
 		args[i] = attr
 	}
-	return context.WithValue(ctx, loggerKey, logger)
+	return context.WithValue(ctx, loggerKey, logger.With(args...))
 }
 
 func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
