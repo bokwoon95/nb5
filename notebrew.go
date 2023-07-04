@@ -602,7 +602,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 					Dialect: nbrew.Dialect,
-					Format:  "DELETE FROM flash_sessions WHERE session_token_hash = {sessionTokenHash}",
+					Format:  "DELETE FROM sessions WHERE session_token_hash = {sessionTokenHash}",
 					Values: []any{
 						sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 					},
@@ -667,7 +667,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				// TODO: means no errors, 302 redirect to resource.
 				return
 			}
-			if response.StatusCode >= 400 && response.StatusCode < 500 {
+			if response.StatusCode != 0 {
 				msg := fmt.Sprintf("%d %s: %s", response.StatusCode, http.StatusText(response.StatusCode), response.Errmsg)
 				http.Error(w, msg, response.StatusCode)
 				return
@@ -698,7 +698,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 				Dialect: nbrew.Dialect,
-				Format:  "INSERT INTO flash_sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
+				Format:  "INSERT INTO sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
 				Values: []any{
 					sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 					sq.BytesParam("data", data),
@@ -719,48 +719,48 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			})
 			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 		}
-		var data Data
-		data.Errmsgs = make(url.Values)
+		var response Response
+		response.Data.Errmsgs = make(url.Values)
 		if r.Form.Has("folder_path") {
-			data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
-			if data.FolderPath == "" {
-				data.Errmsgs.Set("folder_path", "cannot be empty")
-				writeResponse(w, r, data)
+			response.Data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
+			if response.Data.FolderPath == "" {
+				response.Data.Errmsgs.Set("folder_path", "cannot be empty")
+				writeResponse(w, r, response)
 				return
 			}
-			err := validatePath(data.FolderPath)
+			err := validatePath(response.Data.FolderPath)
 			if err != nil {
-				data.Errmsgs.Set("folder_path", err.Error())
-				writeResponse(w, r, data)
+				response.Data.Errmsgs.Set("folder_path", err.Error())
+				writeResponse(w, r, response)
 				return
 			}
-			data.FileName = strings.Trim(path.Clean(r.Form.Get("file_name")), "/")
-			if data.FileName == "" {
-				data.Errmsgs.Set("file_name", "cannot be empty")
-				writeResponse(w, r, data)
+			response.Data.FileName = strings.Trim(path.Clean(r.Form.Get("file_name")), "/")
+			if response.Data.FileName == "" {
+				response.Data.Errmsgs.Set("file_name", "cannot be empty")
+				writeResponse(w, r, response)
 				return
 			}
-			err = validateName(data.FileName)
+			err = validateName(response.Data.FileName)
 			if err != nil {
-				data.Errmsgs.Set("file_name", err.Error())
-				writeResponse(w, r, data)
+				response.Data.Errmsgs.Set("file_name", err.Error())
+				writeResponse(w, r, response)
 				return
 			}
-			data.FilePath = path.Join(data.FolderPath, data.FileName)
+			response.Data.FilePath = path.Join(response.Data.FolderPath, response.Data.FileName)
 		} else {
-			data.FilePath = strings.Trim(path.Clean(r.Form.Get("file_path")), "/")
-			if data.FilePath == "" {
-				data.Errmsgs.Set("file_path", "cannot be empty")
-				writeResponse(w, r, data)
+			response.Data.FilePath = strings.Trim(path.Clean(r.Form.Get("file_path")), "/")
+			if response.Data.FilePath == "" {
+				response.Data.Errmsgs.Set("file_path", "cannot be empty")
+				writeResponse(w, r, response)
 			}
-			err = validatePath(data.FilePath)
+			err = validatePath(response.Data.FilePath)
 			if err != nil {
-				data.Errmsgs.Set("file_path", err.Error())
-				writeResponse(w, r, data)
+				response.Data.Errmsgs.Set("file_path", err.Error())
+				writeResponse(w, r, response)
 				return
 			}
 		}
-		resource, _, _ := strings.Cut(data.FilePath, "/")
+		resource, _, _ := strings.Cut(response.Data.FilePath, "/")
 		switch resource {
 		case "posts", "pages", "notes", "templates", "assets":
 			break
