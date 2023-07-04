@@ -26,7 +26,6 @@ import (
 	"sync"
 	"text/template/parse"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bokwoon95/sq"
 	"golang.org/x/crypto/blake2b"
@@ -478,35 +477,76 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-func validatePath(path string) error {
-	name, names, _ := strings.Cut(strings.Trim(path, "/"), "/")
-	for name != "" {
-		err := validateName(name)
-		if err != nil {
-			return fmt.Errorf("%s: %w", name, err)
-		}
-		name, names, _ = strings.Cut(strings.Trim(names, "/"), "/")
+func validatePath(path string) (errmsgs []string) {
+	const forbiddenChars = " !\";#$%&'()*+,.:;<>=?[]\\^`{}|~"
+	if path == "" {
+		errmsgs = append(errmsgs, "path cannot be empty")
 	}
-	return nil
+	if strings.HasPrefix(path, "/") {
+		errmsgs = append(errmsgs, "path cannot have leading slash")
+	}
+	if strings.HasSuffix(path, "/") {
+		errmsgs = append(errmsgs, "path cannot have trailing slash")
+	}
+	if strings.Contains(path, "//") {
+		errmsgs = append(errmsgs, "path cannot have multiple slashes next to each other")
+	}
+	i := strings.IndexAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	if i > 0 {
+		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
+	}
+	var b strings.Builder
+	str := path
+	for i := strings.IndexAny(str, forbiddenChars); i >= 0; i = strings.IndexAny(str, forbiddenChars) {
+		b.WriteByte(str[i])
+		str = str[i+1:]
+	}
+	if b.Len() > 0 {
+		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
+	}
+	var names []string
+	str = path
+	for name, str, _ := strings.Cut(str, "/"); name != ""; name, str, _ = strings.Cut(str, "/") {
+		switch strings.ToLower(name) {
+		// Windows forbidden file names.
+		case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
+			"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+			"lpt6", "lpt7", "lpt8", "lpt9":
+			names = append(names, name)
+		}
+	}
+	if len(names) > 0 {
+		errmsgs = append(errmsgs, "forbidden names: "+strings.Join(names, ", "))
+	}
+	return errmsgs
 }
 
-func validateName(name string) error {
+func validateName(name string) (errmsgs []string) {
+	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
+	if name == "" {
+		errmsgs = append(errmsgs, "name cannot be empty")
+	}
 	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
-		return fmt.Errorf("no uppercase letters [A-Z] allowed")
+		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
 	}
-	i = strings.IndexAny(name, " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~")
-	if i > 0 {
-		char, _ := utf8.DecodeRuneInString(name[i:])
-		return fmt.Errorf("forbidden character: %c", char)
+	var b strings.Builder
+	tempName := name
+	for i := strings.IndexAny(tempName, forbiddenChars); i >= 0; i = strings.IndexAny(tempName, forbiddenChars) {
+		b.WriteByte(tempName[i])
+		tempName = tempName[i+1:]
 	}
-	switch name {
+	if b.Len() > 0 {
+		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
+	}
+	switch strings.ToLower(name) {
+	// Windows forbidden file names.
 	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
 		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
 		"lpt6", "lpt7", "lpt8", "lpt9":
-		return fmt.Errorf("forbidden name")
+		errmsgs = append(errmsgs, "forbidden name: "+name)
 	}
-	return nil
+	return errmsgs
 }
 
 type contextKey struct{}
@@ -534,6 +574,17 @@ func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) 
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
+	type Data struct {
+		FolderPath string     `json:"folder_path,omitempty"`
+		FileName   string     `json:"file_name,omitempty"`
+		FilePath   string     `json:"file_path,omitempty"`
+		Errmsgs    url.Values `json:"errmsgs,omitempty"`
+	}
+	type Response struct {
+		Data       Data     `json:"data"`
+		StatusCode int      `json:"status_code,omitempty"`
+		Errmsgs    []string `json:"errmsg,omitempty"`
+	}
 	r = r.WithContext(WithAttrs(
 		r.Context(),
 		slog.String("method", r.Method),
@@ -554,12 +605,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 	}
 	// cookie: authentication_token=xxx; session_token=xxx;
-	type Data struct {
-		FolderPath string     `json:"folder_path,omitempty"`
-		FileName   string     `json:"file_name,omitempty"`
-		FilePath   string     `json:"file_path,omitempty"`
-		Errmsgs    url.Values `json:"errmsgs,omitempty"`
-	}
 	switch r.Method {
 	case "GET":
 		var data Data
@@ -612,9 +657,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 			}
 		}
-		data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
-		err = validatePath(data.FolderPath)
-		if err != nil {
+		data.FolderPath = r.Form.Get("folder_path")
+		errmsgs := validatePath(data.FolderPath)
+		if len(errmsgs) > 0 {
 			redirectURL := *r.URL
 			redirectURL.RawQuery = ""
 			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
@@ -637,11 +682,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		buf.WriteTo(w)
 	case "POST":
-		type Response struct {
-			Data       Data   `json:"data"`
-			StatusCode int    `json:"status_code,omitempty"`
-			Errmsg     string `json:"errmsg,omitempty"`
-		}
 		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
 			isJSON := false
 			for _, contentType := range r.Header["Accept"] {
@@ -723,42 +763,27 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		var response Response
 		response.Data.Errmsgs = make(url.Values)
 		if r.Form.Has("folder_path") {
-			response.Data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
-			if response.Data.FolderPath == "" {
+			response.Data.FolderPath = r.Form.Get("folder_path")
+			errmsgs := validatePath(response.Data.FolderPath)
+			if len(errmsgs) > 0 {
 				response.StatusCode = http.StatusBadRequest
-				response.Errmsg = "folder_path cannot be empty"
+				response.Errmsgs = errmsgs
 				writeResponse(w, r, response)
 				return
 			}
-			err := validatePath(response.Data.FolderPath)
-			if err != nil {
-				response.StatusCode = http.StatusBadRequest
-				response.Errmsg = fmt.Sprintf("%s: %v", response.Data.FolderPath, err)
-				writeResponse(w, r, response)
-				return
-			}
-			response.Data.FileName = strings.Trim(path.Clean(r.Form.Get("file_name")), "/")
-			if response.Data.FileName == "" {
-				response.Data.Errmsgs.Set("file_name", "cannot be empty")
-				writeResponse(w, r, response)
-				return
-			}
-			err = validateName(response.Data.FileName)
-			if err != nil {
-				response.Data.Errmsgs.Set("file_name", err.Error())
+			response.Data.FileName = r.Form.Get("file_name")
+			errmsgs = validateName(response.Data.FileName)
+			if len(errmsgs) > 0 {
+				response.Data.Errmsgs["file_name"] = errmsgs
 				writeResponse(w, r, response)
 				return
 			}
 			response.Data.FilePath = path.Join(response.Data.FolderPath, response.Data.FileName)
 		} else {
-			response.Data.FilePath = strings.Trim(path.Clean(r.Form.Get("file_path")), "/")
-			if response.Data.FilePath == "" {
-				response.Data.Errmsgs.Set("file_path", "cannot be empty")
-				writeResponse(w, r, response)
-			}
-			err = validatePath(response.Data.FilePath)
-			if err != nil {
-				response.Data.Errmsgs.Set("file_path", err.Error())
+			response.Data.FilePath = r.Form.Get("file_path")
+			errmsgs := validatePath(response.Data.FilePath)
+			if len(errmsgs) > 0 {
+				response.Data.Errmsgs["file_path"] = errmsgs
 				writeResponse(w, r, response)
 				return
 			}
