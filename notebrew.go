@@ -580,6 +580,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		FilePath   string     `json:"file_path,omitempty"`
 		Errmsgs    url.Values `json:"errmsgs,omitempty"`
 	}
+	// TODO: Rethink Response struct. Start with this scenario: what if the
+	// user posts using ?folder_name=xxx&file_name=xxx but the folder path
+	// starts has the invalid format "posts/abc/def/1234.md"? What should the
+	// user see if they POST-ed using (1) the HTML form or (2) Postman?
 	type Response struct {
 		Data       Data     `json:"data"`
 		StatusCode int      `json:"status_code,omitempty"`
