@@ -587,7 +587,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 			}
 		}
-		data.FolderPath = r.Form.Get("folder_path")
+		data.FolderPath = strings.Trim(path.Clean(r.Form.Get("folder_path")), "/")
 		err = validatePath(data.FolderPath)
 		if err != nil {
 			redirectURL := *r.URL
