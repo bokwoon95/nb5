@@ -14,6 +14,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -574,24 +575,8 @@ func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) 
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
-	type Session struct {
-		FileName string     `json:"file_name,omitempty"`
-		FilePath string     `json:"file_path,omitempty"`
-		Errmsgs  url.Values `json:"errmsgs,omitempty"`
-	}
-	type TemplateData struct {
-		Session
-		FolderPath string `json:"folder_path,omitempty"`
-	}
-	// TODO: Rethink Response struct. Start with this scenario: what if the
-	// user posts using ?folder_name=xxx&file_name=xxx but the folder path
-	// starts has the invalid format "posts/abc/def/1234.md"? What should the
-	// user see if they POST-ed using (1) the HTML form or (2) Postman?
-	type Response struct {
-		Data       TemplateData `json:"data"`
-		StatusCode int          `json:"status_code,omitempty"`
-		Errmsgs    []string     `json:"errmsg,omitempty"`
-	}
+	// type TemplateData struct
+	// type Response struct
 	r = r.WithContext(WithAttrs(
 		r.Context(),
 		slog.String("method", r.Method),
@@ -614,7 +599,15 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	// cookie: authentication_token=xxx; session_token=xxx;
 	switch r.Method {
 	case "GET":
-		var data TemplateData
+		type TemplateData struct {
+			FolderPath        string   `json:"folder_path,omitempty"`
+			FolderPathErrmsgs []string `json:"folder_path_errmsgs,omitempty"`
+			FileName          string   `json:"file_name,omitempty"`
+			FileNameErrmsgs   []string `json:"file_name_errmsgs,omitempty"`
+			FilePath          string   `json:"file_path,omitempty"`
+			FilePathErrmsgs   []string `json:"file_path_errmsgs,omitempty"`
+		}
+		var templateData TemplateData
 		cookie, _ := r.Cookie("session_token")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
@@ -634,22 +627,18 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				copy(sessionTokenHash[8:], checksum[:])
 				createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionToken[:8])), 0)
 				if time.Now().Sub(createdAt) <= 5*time.Minute {
-					b, err := sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
+					templateData, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
 						Dialect: nbrew.Dialect,
 						Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
 						Values: []any{
 							sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 						},
-					}, func(row *sq.Row) []byte {
-						return row.Bytes("data")
+					}, func(row *sq.Row) TemplateData {
+						row.JSON(&templateData, "data")
+						return templateData
 					})
 					if err != nil {
 						Log(r.Context(), slog.LevelError, err.Error())
-					} else {
-						err = json.Unmarshal(b, &data)
-						if err != nil {
-							Log(r.Context(), slog.LevelError, err.Error())
-						}
 					}
 				}
 				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
@@ -664,13 +653,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				}
 			}
 		}
-		data.FolderPath = r.Form.Get("folder_path")
-		errmsgs := validatePath(data.FolderPath)
-		if len(errmsgs) > 0 {
-			redirectURL := *r.URL
-			redirectURL.RawQuery = ""
-			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
-			return
+		if r.Form.Has("folder_path") {
+			templateData = TemplateData{
+				FolderPath: r.Form.Get("folder_path"),
+			}
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
@@ -681,7 +667,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf := bufPool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufPool.Put(buf)
-		err = tmpl.Execute(buf, &data)
+		err = tmpl.Execute(buf, &templateData)
 		if err != nil {
 			Log(r.Context(), slog.LevelError, err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -689,13 +675,32 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		buf.WriteTo(w)
 	case "POST":
+		// TODO: Rethink Response struct. Start with this scenario: what if the
+		// user posts using ?folder_name=xxx&file_name=xxx but the folder path
+		// starts has the invalid format "posts/abc/def/1234.md"? What should the
+		// user see if they POST-ed using (1) the HTML form or (2) Postman?
+		type Response struct {
+			FolderPath        string   `json:"folder_path,omitempty"`
+			FolderPathErrmsgs []string `json:"folder_path_errmsgs,omitempty"`
+			FileName          string   `json:"file_name,omitempty"`
+			FileNameErrmsgs   []string `json:"file_name_errmsgs,omitempty"`
+			FilePath          string   `json:"file_path,omitempty"`
+			FilePathErrmsgs   []string `json:"file_path_errmsgs,omitempty"`
+		}
+		// FolderPath, FolderPathErrmsgs
+		// FileName, FileNameErrmsgs
+		// FilePath, FilePathErrmsgs
 		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
 			isJSON := false
-			for _, contentType := range r.Header["Accept"] {
-				if contentType == "text/html" {
+			for _, str := range r.Header["Accept"] {
+				mediaType, _, err := mime.ParseMediaType(str)
+				if err != nil {
+					continue
+				}
+				if mediaType == "text/html" {
 					break
 				}
-				if contentType == "application/json" {
+				if mediaType == "application/json" {
 					isJSON = true
 					break
 				}
