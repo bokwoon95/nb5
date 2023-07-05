@@ -574,20 +574,23 @@ func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) 
 }
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
-	type Data struct {
-		FolderPath string     `json:"folder_path,omitempty"`
-		FileName   string     `json:"file_name,omitempty"`
-		FilePath   string     `json:"file_path,omitempty"`
-		Errmsgs    url.Values `json:"errmsgs,omitempty"`
+	type Session struct {
+		FileName string     `json:"file_name,omitempty"`
+		FilePath string     `json:"file_path,omitempty"`
+		Errmsgs  url.Values `json:"errmsgs,omitempty"`
+	}
+	type TemplateData struct {
+		Session
+		FolderPath string `json:"folder_path,omitempty"`
 	}
 	// TODO: Rethink Response struct. Start with this scenario: what if the
 	// user posts using ?folder_name=xxx&file_name=xxx but the folder path
 	// starts has the invalid format "posts/abc/def/1234.md"? What should the
 	// user see if they POST-ed using (1) the HTML form or (2) Postman?
 	type Response struct {
-		Data       Data     `json:"data"`
-		StatusCode int      `json:"status_code,omitempty"`
-		Errmsgs    []string `json:"errmsg,omitempty"`
+		Data       TemplateData `json:"data"`
+		StatusCode int          `json:"status_code,omitempty"`
+		Errmsgs    []string     `json:"errmsg,omitempty"`
 	}
 	r = r.WithContext(WithAttrs(
 		r.Context(),
@@ -611,7 +614,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	// cookie: authentication_token=xxx; session_token=xxx;
 	switch r.Method {
 	case "GET":
-		var data Data
+		var data TemplateData
 		cookie, _ := r.Cookie("session_token")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
