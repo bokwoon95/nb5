@@ -554,35 +554,18 @@ type contextKey struct{}
 
 var loggerKey = &contextKey{}
 
-func WithAttrs(ctx context.Context, attrs ...slog.Attr) context.Context {
-	logger, ok := ctx.Value(loggerKey).(*slog.Logger)
-	if !ok {
-		logger = slog.Default()
-	}
-	args := make([]any, len(attrs))
-	for i, attr := range attrs {
-		args[i] = attr
-	}
-	return context.WithValue(ctx, loggerKey, logger.With(args...))
-}
-
-func Log(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
-	logger, ok := ctx.Value(loggerKey).(*slog.Logger)
-	if !ok {
-		logger = slog.Default()
-	}
-	logger.LogAttrs(ctx, level, msg, attrs...)
-}
-
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	// type TemplateData struct
 	// type Response struct
-	r = r.WithContext(WithAttrs(
-		r.Context(),
+	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+	if !ok {
+		logger = slog.Default()
+	}
+	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger.With(
 		slog.String("method", r.Method),
 		slog.String("url", r.URL.String()),
 		slog.String("sitePrefix", sitePrefix),
-	))
+	)))
 	if nbrew.DB == nil {
 		nbrew.notFound(w, r)
 		return
@@ -638,7 +621,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 						return templateData
 					})
 					if err != nil {
-						Log(r.Context(), slog.LevelError, err.Error())
+						logger.Error(err.Error())
 					}
 				}
 				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
@@ -649,7 +632,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 					},
 				})
 				if err != nil {
-					Log(r.Context(), slog.LevelError, err.Error())
+					logger.Error(err.Error())
 				}
 			}
 		}
@@ -660,7 +643,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
-			Log(r.Context(), slog.LevelError, err.Error())
+			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -669,7 +652,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		defer bufPool.Put(buf)
 		err = tmpl.Execute(buf, &templateData)
 		if err != nil {
-			Log(r.Context(), slog.LevelError, err.Error())
+			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -708,7 +691,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			if isJSON {
 				b, err := json.Marshal(&response)
 				if err != nil {
-					Log(r.Context(), slog.LevelError, err.Error())
+					logger.Error(err.Error())
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 					return
 				}
@@ -735,7 +718,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
 			_, err = rand.Read(sessionToken[8:])
 			if err != nil {
-				Log(r.Context(), slog.LevelError, err.Error())
+				logger.Error(err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
@@ -745,7 +728,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			copy(sessionTokenHash[8:], checksum[:])
 			data, err := json.Marshal(&response.Data)
 			if err != nil {
-				Log(r.Context(), slog.LevelError, err.Error())
+				logger.Error(err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
@@ -758,7 +741,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				},
 			})
 			if err != nil {
-				Log(r.Context(), slog.LevelError, err.Error())
+				logger.Error(err.Error())
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
