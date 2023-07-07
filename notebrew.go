@@ -675,17 +675,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// FilePath, FilePathErrmsgs
 		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
 			isJSON := false
-			for _, str := range r.Header["Accept"] {
-				mediaType, _, err := mime.ParseMediaType(str)
-				if err != nil {
-					continue
-				}
-				if mediaType == "text/html" {
-					break
-				}
-				if mediaType == "application/json" {
-					isJSON = true
-					break
+			if len(r.Header["Accept"]) > 0 {
+				mediaType, _, err := mime.ParseMediaType(r.Header["Accept"][0])
+				if err == nil {
+					isJSON = mediaType == "application/json"
 				}
 			}
 			if isJSON {
