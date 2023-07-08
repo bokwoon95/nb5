@@ -783,6 +783,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			return
 		}
 		// - prefix check
+		// - posts/notes structural check
+		// - file extension check
 		data.FilePath = path.Join(data.FolderPath, data.FileName)
 		resource, _, _ := strings.Cut(data.FilePath, "/")
 		switch resource {
