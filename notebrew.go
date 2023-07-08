@@ -555,17 +555,22 @@ type contextKey struct{}
 var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
-	// type TemplateData struct
-	// type Response struct
+	type Data struct {
+		FolderPath string     `json:"folder_path,omitempty"`
+		FileName   string     `json:"file_name,omitempty"`
+		FilePath   string     `json:"file_path,omitempty"`
+		Errmsgs    url.Values `json:"errmsgs,omitempty"`
+	}
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
 	if !ok {
 		logger = slog.Default()
 	}
-	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger.With(
+	logger = logger.With(
 		slog.String("method", r.Method),
 		slog.String("url", r.URL.String()),
 		slog.String("sitePrefix", sitePrefix),
-	)))
+	)
+	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
 	if nbrew.DB == nil {
 		nbrew.notFound(w, r)
 		return
@@ -674,14 +679,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// FileName, FileNameErrmsgs
 		// FilePath, FilePathErrmsgs
 		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
-			isJSON := false
-			if len(r.Header["Accept"]) > 0 {
-				mediaType, _, err := mime.ParseMediaType(r.Header["Accept"][0])
-				if err == nil {
-					isJSON = mediaType == "application/json"
-				}
-			}
-			if isJSON {
+			accept, _, _ := mime.ParseMediaType(r.Header.Get("Accept"))
+			if accept == "application/json" {
 				b, err := json.Marshal(&response)
 				if err != nil {
 					logger.Error(err.Error())
