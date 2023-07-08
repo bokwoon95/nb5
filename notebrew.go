@@ -19,7 +19,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -587,20 +586,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	// cookie: authentication_token=xxx; session_token=xxx;
 	switch r.Method {
 	case "GET":
-		type TemplateData struct {
-			FolderPath        string   `json:"folder_path,omitempty"`
-			FolderPathErrmsgs []string `json:"folder_path_errmsgs,omitempty"`
-			FileName          string   `json:"file_name,omitempty"`
-			FileNameErrmsgs   []string `json:"file_name_errmsgs,omitempty"`
-			FilePath          string   `json:"file_path,omitempty"`
-			FilePathErrmsgs   []string `json:"file_path_errmsgs,omitempty"`
-		}
-		var templateData TemplateData
-		cookie, _ := r.Cookie("session_token")
+		var data Data
+		var sessionTokenHash []byte
+		cookie, _ := r.Cookie("flash_session")
 		if cookie != nil {
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "session_token",
+				Name:     "flash_session",
 				Value:    "",
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
@@ -609,41 +601,51 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			})
 			sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
 			if err == nil {
-				var sessionTokenHash [8 + blake2b.Size256]byte
+				sessionTokenHash = make([]byte, 8+blake2b.Size256)
 				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
 				copy(sessionTokenHash[:8], sessionToken[:8])
 				copy(sessionTokenHash[8:], checksum[:])
-				createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionToken[:8])), 0)
-				if time.Now().Sub(createdAt) <= 5*time.Minute {
-					templateData, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
-						Dialect: nbrew.Dialect,
-						Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
-						Values: []any{
-							sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
-						},
-					}, func(row *sq.Row) TemplateData {
-						row.JSON(&templateData, "data")
-						return templateData
-					})
-					if err != nil {
-						logger.Error(err.Error())
-					}
-				}
-				_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+			}
+		}
+		if sessionTokenHash != nil {
+			defer func() {
+				_, err := sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 					Dialect: nbrew.Dialect,
 					Format:  "DELETE FROM sessions WHERE session_token_hash = {sessionTokenHash}",
 					Values: []any{
-						sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+						sq.BytesParam("sessionTokenHash", sessionTokenHash),
 					},
 				})
 				if err != nil {
 					logger.Error(err.Error())
 				}
-			}
+			}()
 		}
-		if r.Form.Has("folder_path") {
-			templateData = TemplateData{
-				FolderPath: r.Form.Get("folder_path"),
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+			return
+		}
+		if len(r.Form) > 0 {
+			data.FolderPath = r.Form.Get("folder_path")
+			data.FileName = r.Form.Get("file_name")
+			data.FilePath = r.Form.Get("file_path")
+		} else {
+			createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionTokenHash[:8])), 0)
+			if time.Now().Sub(createdAt) <= 5*time.Minute {
+				data, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
+					Dialect: nbrew.Dialect,
+					Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
+					Values: []any{
+						sq.BytesParam("sessionTokenHash", sessionTokenHash),
+					},
+				}, func(row *sq.Row) Data {
+					row.JSON(&data, "data")
+					return data
+				})
+				if err != nil {
+					logger.Error(err.Error())
+				}
 			}
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
@@ -655,7 +657,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		buf := bufPool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufPool.Put(buf)
-		err = tmpl.Execute(buf, &templateData)
+		err = tmpl.Execute(buf, &data)
 		if err != nil {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -663,25 +665,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		}
 		buf.WriteTo(w)
 	case "POST":
-		// TODO: Rethink Response struct. Start with this scenario: what if the
-		// user posts using ?folder_name=xxx&file_name=xxx but the folder path
-		// starts has the invalid format "posts/abc/def/1234.md"? What should the
-		// user see if they POST-ed using (1) the HTML form or (2) Postman?
-		type Response struct {
-			FolderPath        string   `json:"folder_path,omitempty"`
-			FolderPathErrmsgs []string `json:"folder_path_errmsgs,omitempty"`
-			FileName          string   `json:"file_name,omitempty"`
-			FileNameErrmsgs   []string `json:"file_name_errmsgs,omitempty"`
-			FilePath          string   `json:"file_path,omitempty"`
-			FilePathErrmsgs   []string `json:"file_path_errmsgs,omitempty"`
-		}
-		// FolderPath, FolderPathErrmsgs
-		// FileName, FileNameErrmsgs
-		// FilePath, FilePathErrmsgs
-		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
+		writeResponse := func(w http.ResponseWriter, r *http.Request, data Data) {
 			accept, _, _ := mime.ParseMediaType(r.Header.Get("Accept"))
 			if accept == "application/json" {
-				b, err := json.Marshal(&response)
+				b, err := json.Marshal(&data)
 				if err != nil {
 					logger.Error(err.Error())
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -690,38 +677,33 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				w.Write(b)
 				return
 			}
-			if len(response.Data.Errmsgs) == 0 {
+			if len(data.Errmsgs) == 0 {
 				// TODO: means no errors, 302 redirect to resource.
 				http.Redirect(w, r, "", http.StatusFound)
 				return
 			}
-			if response.StatusCode != 0 {
-				msg := fmt.Sprintf("%d %s: %s", response.StatusCode, http.StatusText(response.StatusCode), response.Errmsg)
-				http.Error(w, msg, response.StatusCode)
+			if len(data.Errmsgs[""]) > 0 {
+				http.Error(w, strings.Join(data.Errmsgs[""], "\n"), http.StatusBadRequest)
 				return
 			}
-			queryParams := make(url.Values)
-			if r.Form.Has("folder_path") {
-				queryParams.Set("folder_path", r.Form.Get("folder_path"))
-			}
 			redirectURL := *r.URL
-			redirectURL.RawQuery = queryParams.Encode()
+			redirectURL.RawQuery = ""
 			var sessionToken [8 + 16]byte
 			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
 			_, err = rand.Read(sessionToken[8:])
 			if err != nil {
 				logger.Error(err.Error())
-				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 			var sessionTokenHash [8 + blake2b.Size256]byte
 			checksum := blake2b.Sum256([]byte(sessionToken[8:]))
 			copy(sessionTokenHash[:8], sessionToken[:8])
 			copy(sessionTokenHash[8:], checksum[:])
-			data, err := json.Marshal(&response.Data)
+			dataBytes, err := json.Marshal(&data)
 			if err != nil {
 				logger.Error(err.Error())
-				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 			_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
@@ -729,17 +711,17 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				Format:  "INSERT INTO sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
 				Values: []any{
 					sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
-					sq.BytesParam("data", data),
+					sq.BytesParam("data", dataBytes),
 				},
 			})
 			if err != nil {
 				logger.Error(err.Error())
-				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 			http.SetCookie(w, &http.Cookie{
 				Path:     r.URL.Path,
-				Name:     "session_token",
+				Name:     "flash_session",
 				Value:    strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0"),
 				Secure:   nbrew.Scheme == "https://",
 				HttpOnly: true,
@@ -747,33 +729,30 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			})
 			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 		}
-		var response Response
-		response.Data.Errmsgs = make(url.Values)
-		if r.Form.Has("folder_path") {
-			response.Data.FolderPath = r.Form.Get("folder_path")
-			errmsgs := validatePath(response.Data.FolderPath)
-			if len(errmsgs) > 0 {
-				response.StatusCode = http.StatusBadRequest
-				response.Errmsgs = errmsgs
-				writeResponse(w, r, response)
+		var data Data
+		data.Errmsgs = make(url.Values)
+		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if contentType == "application/json" {
+			err = json.NewDecoder(r.Body).Decode(&data)
+			if err != nil {
+				var syntaxErr *json.SyntaxError
+				if errors.As(err, &syntaxErr) {
+					http.Error(w, fmt.Sprintf("400 Bad Request: %s", syntaxErr), http.StatusBadRequest)
+					return
+				}
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			response.Data.FileName = r.Form.Get("file_name")
-			errmsgs = validateName(response.Data.FileName)
-			if len(errmsgs) > 0 {
-				response.Data.Errmsgs["file_name"] = errmsgs
-				writeResponse(w, r, response)
-				return
-			}
-			response.Data.FilePath = path.Join(response.Data.FolderPath, response.Data.FileName)
 		} else {
-			response.Data.FilePath = r.Form.Get("file_path")
-			errmsgs := validatePath(response.Data.FilePath)
-			if len(errmsgs) > 0 {
-				response.Data.Errmsgs["file_path"] = errmsgs
-				writeResponse(w, r, response)
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
 			}
+			data.FolderPath = r.Form.Get("folder_path")
+			data.FileName = r.Form.Get("file_name")
+			data.FilePath = r.Form.Get("file_path")
 		}
 		resource, _, _ := strings.Cut(response.Data.FilePath, "/")
 		switch resource {
