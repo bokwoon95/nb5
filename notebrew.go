@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -477,23 +478,23 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-func validatePath(path string) (errmsgs []string) {
+func validatePath(path string) (errs []string) {
 	const forbiddenChars = " !\";#$%&'()*+,.:;<>=?[]\\^`{}|~"
 	if path == "" {
-		errmsgs = append(errmsgs, "path cannot be empty")
+		errs = append(errs, "path cannot be empty")
 	}
 	if strings.HasPrefix(path, "/") {
-		errmsgs = append(errmsgs, "path cannot have leading slash")
+		errs = append(errs, "path cannot have leading slash")
 	}
 	if strings.HasSuffix(path, "/") {
-		errmsgs = append(errmsgs, "path cannot have trailing slash")
+		errs = append(errs, "path cannot have trailing slash")
 	}
 	if strings.Contains(path, "//") {
-		errmsgs = append(errmsgs, "path cannot have multiple slashes next to each other")
+		errs = append(errs, "path cannot have multiple slashes next to each other")
 	}
 	i := strings.IndexAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
-		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
+		errs = append(errs, "no uppercase letters [A-Z] allowed")
 	}
 	var b strings.Builder
 	str := path
@@ -502,7 +503,7 @@ func validatePath(path string) (errmsgs []string) {
 		str = str[i+1:]
 	}
 	if b.Len() > 0 {
-		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
+		errs = append(errs, "forbidden characters: "+b.String())
 	}
 	var names []string
 	str = path
@@ -516,19 +517,19 @@ func validatePath(path string) (errmsgs []string) {
 		}
 	}
 	if len(names) > 0 {
-		errmsgs = append(errmsgs, "forbidden names: "+strings.Join(names, ", "))
+		errs = append(errs, "forbidden names: "+strings.Join(names, ", "))
 	}
-	return errmsgs
+	return errs
 }
 
-func validateName(name string) (errmsgs []string) {
+func validateName(name string) (errs []string) {
 	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
 	if name == "" {
-		errmsgs = append(errmsgs, "name cannot be empty")
+		errs = append(errs, "name cannot be empty")
 	}
 	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
-		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
+		errs = append(errs, "no uppercase letters [A-Z] allowed")
 	}
 	var b strings.Builder
 	tempName := name
@@ -537,16 +538,16 @@ func validateName(name string) (errmsgs []string) {
 		tempName = tempName[i+1:]
 	}
 	if b.Len() > 0 {
-		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
+		errs = append(errs, "forbidden characters: "+b.String())
 	}
 	switch strings.ToLower(name) {
 	// Windows forbidden file names.
 	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
 		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
 		"lpt6", "lpt7", "lpt8", "lpt9":
-		errmsgs = append(errmsgs, "forbidden name: "+name)
+		errs = append(errs, "forbidden name: "+name)
 	}
-	return errmsgs
+	return errs
 }
 
 type contextKey struct{}
@@ -558,7 +559,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		FolderPath string     `json:"folder_path,omitempty"`
 		FileName   string     `json:"file_name,omitempty"`
 		FilePath   string     `json:"file_path,omitempty"`
-		Errmsgs    url.Values `json:"errmsgs,omitempty"`
+		Errors     url.Values `json:"errors,omitempty"`
 	}
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
 	if !ok {
@@ -677,13 +678,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				w.Write(b)
 				return
 			}
-			if len(data.Errmsgs) == 0 {
+			if len(data.Errors) == 0 {
 				// TODO: means no errors, 302 redirect to resource.
 				http.Redirect(w, r, "", http.StatusFound)
 				return
 			}
-			if len(data.Errmsgs[""]) > 0 {
-				http.Error(w, strings.Join(data.Errmsgs[""], "\n"), http.StatusBadRequest)
+			if len(data.Errors[""]) > 0 {
+				http.Error(w, strings.Join(data.Errors[""], "\n"), http.StatusBadRequest)
 				return
 			}
 			redirectURL := *r.URL
@@ -730,7 +731,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 		}
 		var data Data
-		data.Errmsgs = make(url.Values)
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if contentType == "application/json" {
 			err = json.NewDecoder(r.Body).Decode(&data)
@@ -745,7 +745,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		} else {
-			err := r.ParseForm()
+			err = r.ParseForm()
 			if err != nil {
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
@@ -754,7 +754,37 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FileName = r.Form.Get("file_name")
 			data.FilePath = r.Form.Get("file_path")
 		}
-		resource, _, _ := strings.Cut(response.Data.FilePath, "/")
+		data.Errors = make(url.Values)
+		if data.FilePath != "" {
+			if errs := validatePath(data.FilePath); len(errs) > 0 {
+				data.Errors["file_path"] = errs
+				writeResponse(w, r, data)
+				return
+			}
+			resource, _, _ := strings.Cut(data.FilePath, "/")
+			switch resource {
+			case "posts":
+			case "pages":
+			case "notes":
+			case "templates":
+			case "assets":
+			default:
+				data.Errors.Set("", "path has to start with posts")
+			}
+		}
+		if errs := validatePath(data.FolderPath); len(errs) > 0 {
+			data.Errors["folder_path"] = errs
+		}
+		if errs := validateName(data.FileName); len(errs) > 0 {
+			data.Errors["file_name"] = errs
+		}
+		if len(data.Errors) > 0 {
+			writeResponse(w, r, data)
+			return
+		}
+		// - prefix check
+		data.FilePath = path.Join(data.FolderPath, data.FileName)
+		resource, _, _ := strings.Cut(data.FilePath, "/")
 		switch resource {
 		case "posts":
 		case "pages":
@@ -793,4 +823,5 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	}
 }
 
-func (nbrew *Notebrew) newSession()
+func (nbrew *Notebrew) newSession() {
+}
