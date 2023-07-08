@@ -755,12 +755,15 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FilePath = r.Form.Get("file_path")
 		}
 		data.Errors = make(url.Values)
-		if data.FilePath != "" {
-			if errs := validatePath(data.FilePath); len(errs) > 0 {
+		if errs := validatePath(data.FilePath); len(errs) > 0 {
+			if data.FolderPath != "" {
+			} else {
 				data.Errors["file_path"] = errs
-				writeResponse(w, r, data)
-				return
 			}
+			writeResponse(w, r, data)
+			return
+		}
+		if data.FilePath != "" {
 			resource, _, _ := strings.Cut(data.FilePath, "/")
 			switch resource {
 			case "posts":
