@@ -687,8 +687,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				http.Error(w, strings.Join(data.Errors[""], "\n"), http.StatusBadRequest)
 				return
 			}
-			redirectURL := *r.URL
-			redirectURL.RawQuery = ""
 			var sessionToken [8 + 16]byte
 			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
 			_, err = rand.Read(sessionToken[8:])
@@ -728,6 +726,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 			})
+			redirectURL := *r.URL
+			redirectURL.RawQuery = ""
 			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 		}
 		var data Data
