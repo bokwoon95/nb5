@@ -479,6 +479,38 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
+func validateName(name string) (errs []string) {
+	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
+	if name == "" {
+		errs = append(errs, "cannot be empty")
+	}
+	dotCount := strings.Count(name, ".")
+	if dotCount > 1 {
+		errs = append(errs, "too many periods (only one allowed in the extension)")
+	}
+	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	if i > 0 {
+		errs = append(errs, "no uppercase letters [A-Z] allowed")
+	}
+	var b strings.Builder
+	tempName := name
+	for i := strings.IndexAny(tempName, forbiddenChars); i >= 0; i = strings.IndexAny(tempName, forbiddenChars) {
+		b.WriteByte(tempName[i])
+		tempName = tempName[i+1:]
+	}
+	if b.Len() > 0 {
+		errs = append(errs, "forbidden characters: "+b.String())
+	}
+	switch strings.ToLower(name) {
+	// Windows forbidden file names.
+	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
+		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+		"lpt6", "lpt7", "lpt8", "lpt9":
+		errs = append(errs, "forbidden name: "+name)
+	}
+	return errs
+}
+
 func validatePath(path string, allowExtension bool) (errs []string) {
 	if path == "" {
 		errs = append(errs, "cannot be empty")
@@ -525,38 +557,6 @@ func validatePath(path string, allowExtension bool) (errs []string) {
 	}
 	if len(names) > 0 {
 		errs = append(errs, "forbidden names: "+strings.Join(names, ", "))
-	}
-	return errs
-}
-
-func validateName(name string) (errs []string) {
-	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
-	if name == "" {
-		errs = append(errs, "cannot be empty")
-	}
-	dotCount := strings.Count(name, ".")
-	if dotCount > 1 {
-		errs = append(errs, "too many periods (only one allowed in the extension)")
-	}
-	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	if i > 0 {
-		errs = append(errs, "no uppercase letters [A-Z] allowed")
-	}
-	var b strings.Builder
-	tempName := name
-	for i := strings.IndexAny(tempName, forbiddenChars); i >= 0; i = strings.IndexAny(tempName, forbiddenChars) {
-		b.WriteByte(tempName[i])
-		tempName = tempName[i+1:]
-	}
-	if b.Len() > 0 {
-		errs = append(errs, "forbidden characters: "+b.String())
-	}
-	switch strings.ToLower(name) {
-	// Windows forbidden file names.
-	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
-		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
-		"lpt6", "lpt7", "lpt8", "lpt9":
-		errs = append(errs, "forbidden name: "+name)
 	}
 	return errs
 }
