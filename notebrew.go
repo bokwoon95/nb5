@@ -737,7 +737,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			if err != nil {
 				var syntaxErr *json.SyntaxError
 				if errors.As(err, &syntaxErr) {
-					http.Error(w, fmt.Sprintf("400 Bad Request: %s", syntaxErr), http.StatusBadRequest)
+					http.Error(w, "400 Bad Request: malformed JSON", http.StatusBadRequest)
 					return
 				}
 				logger.Error(err.Error())
