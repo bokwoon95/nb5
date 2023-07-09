@@ -591,11 +591,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		nbrew.notFound(w, r)
 		return
 	}
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
-	}
-	// cookie: authentication_token=xxx; session_token=xxx;
 	switch r.Method {
 	case "GET":
 		var data Data
@@ -700,7 +695,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 			var sessionToken [8 + 16]byte
 			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
-			_, err = rand.Read(sessionToken[8:])
+			_, err := rand.Read(sessionToken[8:])
 			if err != nil {
 				logger.Error(err.Error())
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -743,7 +738,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		var data Data
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if contentType == "application/json" {
-			err = json.NewDecoder(r.Body).Decode(&data)
+			err := json.NewDecoder(r.Body).Decode(&data)
 			if err != nil {
 				var syntaxErr *json.SyntaxError
 				if errors.As(err, &syntaxErr) {
@@ -755,7 +750,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		} else {
-			err = r.ParseForm()
+			err := r.ParseForm()
 			if err != nil {
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
@@ -764,15 +759,20 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FileName = r.Form.Get("file_name")
 			data.FilePath = r.Form.Get("file_path")
 		}
-		data.Errors = make(url.Values)
-		// filePathProvided tracks whether the user provided file_path or folder_path
-		// + file_name.
+
+		// filePathProvided tracks whether the user provided file_path or
+		// folder_path and file_name.
 		var filePathProvided bool
+
 		// filePath is the path of the file to create, obtained from either
 		// file_path or path.Join(folder_path, file_name).
 		var filePath string
+
 		// ext is the extension of the file.
 		var ext string
+
+		data.Errors = make(url.Values)
+
 		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
 			data.Errors.Add("", "either file_path or folder_path and file_name must be provided")
 		} else if data.FilePath != "" {
@@ -803,6 +803,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			writeResponse(w, r, data)
 			return
 		}
+
 		head, tail, _ := strings.Cut(filePath, "/")
 		switch head {
 		case "posts", "notes":
@@ -881,6 +882,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			writeResponse(w, r, data)
 			return
 		}
+
 		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, filepath.Dir(filePath)))
 		if err != nil {
 			errmsg := err.Error()
@@ -895,6 +897,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			writeResponse(w, r, data)
 			return
 		}
+
 		writer, err := OpenWriter(nbrew.FS, filePath)
 		if err != nil {
 			logger.Error(err.Error())
