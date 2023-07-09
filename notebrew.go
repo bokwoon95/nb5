@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/bokwoon95/sq"
+	"github.com/oklog/ulid/v2"
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/exp/slog"
 )
@@ -754,23 +755,32 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FilePath = r.Form.Get("file_path")
 		}
 		data.Errors = make(url.Values)
+		var isFilePath bool // Whether the user provided file_path or folder_path + file_name.
 		var filePath string
+		var ext string
 		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
 			data.Errors.Add("", "either file_path or folder_path and file_name must be provided")
 		} else if data.FilePath != "" {
+			isFilePath = true
 			filePath = data.FilePath
+			ext = filepath.Ext(data.FilePath)
 			data.FolderPath = ""
 			data.FileName = ""
-			if errs := validatePath(data.FilePath); len(errs) > 0 {
+			errs := validatePath(strings.TrimSuffix(data.FilePath, ext))
+			if len(errs) > 0 {
 				data.Errors["file_path"] = errs
 			}
 		} else {
+			isFilePath = false
 			filePath = path.Join(data.FolderPath, data.FileName)
+			ext = filepath.Ext(data.FileName)
 			data.FilePath = ""
-			if errs := validatePath(data.FolderPath); len(errs) > 0 {
+			errs := validatePath(data.FolderPath)
+			if len(errs) > 0 {
 				data.Errors["folder_path"] = errs
 			}
-			if errs := validateName(data.FileName); len(errs) > 0 {
+			errs = validateName(strings.TrimSuffix(data.FileName, ext))
+			if len(errs) > 0 {
 				data.Errors["file_name"] = errs
 			}
 		}
@@ -778,24 +788,71 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			writeResponse(w, r, data)
 			return
 		}
-		// - prefix check
-		// - posts/notes structural check
-		// - file extension check
-		resource, _, _ := strings.Cut(filePath, "/")
-		switch resource {
-		case "posts":
-		case "pages":
-		case "notes":
-		case "templates":
+		head, tail, _ := strings.Cut(filePath, "/")
+		switch head {
+		case "posts", "notes":
+			if isFilePath {
+			}
+			if tail == "" {
+				tail = strings.ToLower(ulid.Make().String()) + ".md"
+				filePath = path.Join(head, tail)
+			} else {
+			}
+			if strings.Count(tail, "/") > 1 {
+				errmsg := "invalid path"
+				if isFilePath {
+					data.Errors.Add("file_path", errmsg)
+				} else {
+					data.Errors.Add("folder_path", errmsg)
+				}
+				writeResponse(w, r, data)
+				return
+			}
+			if ext != ".md" {
+				const errmsg = "invalid extension (must be .md)"
+				if isFilePath {
+					data.Errors.Add("file_path", errmsg)
+				} else {
+					data.Errors.Add("file_name", errmsg)
+				}
+				writeResponse(w, r, data)
+				return
+			}
+		case "pages", "templates":
+			if ext != ".html" {
+				const errmsg = "invalid extension (must be .html)"
+				if isFilePath {
+					data.Errors.Add("file_path", errmsg)
+				} else {
+					data.Errors.Add("file_name", errmsg)
+				}
+				writeResponse(w, r, data)
+				return
+			}
 		case "assets":
+			switch ext {
+			case "":
+			default:
+			}
+			if ext != ".html" {
+				const errmsg = "invalid extension"
+				if isFilePath {
+					data.Errors.Add("file_path", errmsg)
+				} else {
+					data.Errors.Add("file_name", errmsg)
+				}
+				writeResponse(w, r, data)
+				return
+			}
 		default:
 			const errmsg = "path has to start with posts, pages, notes, templates or assets"
-			if data.FilePath != "" {
+			if isFilePath {
 				data.Errors.Add("file_path", errmsg)
 			} else {
 				data.Errors.Add("folder_path", errmsg)
 			}
 			writeResponse(w, r, data)
+			return
 		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
 		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
