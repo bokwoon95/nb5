@@ -765,14 +765,18 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FilePath = r.Form.Get("file_path")
 		}
 		data.Errors = make(url.Values)
-		var isFilePath bool // Whether the user provided file_path or folder_path + file_name.
+		// filePathProvided tracks whether the user provided file_path or folder_path
+		// + file_name.
+		var filePathProvided bool
+		// filePath is the path of the file to create, obtained from either
+		// file_path or path.Join(folder_path, file_name).
 		var filePath string
+		// ext is the extension of the file.
 		var ext string
-		// PROBLEM: I don't want to burden the user with typing out the file extension when in folder -> filename mode. Even if I do make filename plus extension mandatory, how do I convey that periods are not allowed in the filename itself?
 		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
 			data.Errors.Add("", "either file_path or folder_path and file_name must be provided")
 		} else if data.FilePath != "" {
-			isFilePath = true
+			filePathProvided = true
 			filePath = data.FilePath
 			ext = filepath.Ext(data.FilePath)
 			data.FolderPath = ""
@@ -782,7 +786,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				data.Errors["file_path"] = errs
 			}
 		} else {
-			isFilePath = false
+			filePathProvided = false
 			filePath = path.Join(data.FolderPath, data.FileName)
 			ext = filepath.Ext(data.FileName)
 			data.FilePath = ""
@@ -802,16 +806,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		head, tail, _ := strings.Cut(filePath, "/")
 		switch head {
 		case "posts", "notes":
-			if isFilePath {
-			}
-			if tail == "" {
-				tail = strings.ToLower(ulid.Make().String()) + ".md"
-				filePath = path.Join(head, tail)
-			} else {
-			}
 			if strings.Count(tail, "/") > 1 {
-				errmsg := "invalid path"
-				if isFilePath {
+				const errmsg = "cannot create a file here"
+				if filePathProvided {
 					data.Errors.Add("file_path", errmsg)
 				} else {
 					data.Errors.Add("folder_path", errmsg)
@@ -819,9 +816,19 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				writeResponse(w, r, data)
 				return
 			}
+			if tail == "" {
+				filePath = path.Join(filePath, strings.ToLower(ulid.Make().String())+".md")
+				ext = ".md"
+			} else if !strings.Contains(tail, "/") && !strings.HasSuffix(tail, ".md") {
+				_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, "posts", tail))
+				if err == nil {
+					filePath = path.Join(filePath, strings.ToLower(ulid.Make().String())+".md")
+					ext = ".md"
+				}
+			}
 			if ext != ".md" {
-				const errmsg = "invalid extension (must be .md)"
-				if isFilePath {
+				const errmsg = "invalid extension (must end in .md)"
+				if filePathProvided {
 					data.Errors.Add("file_path", errmsg)
 				} else {
 					data.Errors.Add("file_name", errmsg)
@@ -831,8 +838,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			}
 		case "pages", "templates":
 			if ext != ".html" {
-				const errmsg = "invalid extension (must be .html)"
-				if isFilePath {
+				const errmsg = "invalid extension (must end in .html)"
+				if filePathProvided {
 					data.Errors.Add("file_path", errmsg)
 				} else {
 					data.Errors.Add("file_name", errmsg)
@@ -841,13 +848,22 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		case "assets":
-			switch ext {
-			case "":
-			default:
+			allowedExts := []string{
+				".html", ".css", ".js", ".md", ".txt",
+				".jpeg", ".jpg", ".png", ".gif", ".svg", ".ico",
+				".eof", ".ttf", ".woff", ".woff2",
+				".csv", ".tsv", ".json", ".xml", ".toml", ".yaml", ".yml",
 			}
-			if ext != ".html" {
-				const errmsg = "invalid extension"
-				if isFilePath {
+			match := false
+			for _, allowedExt := range allowedExts {
+				if ext == allowedExt {
+					match = true
+					break
+				}
+			}
+			if !match {
+				errmsg := fmt.Sprintf("invalid extension (must end in one of: %s)", strings.Join(allowedExts, ", "))
+				if filePathProvided {
 					data.Errors.Add("file_path", errmsg)
 				} else {
 					data.Errors.Add("file_name", errmsg)
@@ -856,8 +872,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		default:
-			const errmsg = "path has to start with posts, pages, notes, templates or assets"
-			if isFilePath {
+			const errmsg = "path has to start with posts, notes, pages, templates or assets"
+			if filePathProvided {
 				data.Errors.Add("file_path", errmsg)
 			} else {
 				data.Errors.Add("folder_path", errmsg)
@@ -865,27 +881,33 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			writeResponse(w, r, data)
 			return
 		}
-		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
-		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
-
-		// TODO: We need to validate "dir" and "filename" separately. Maybe
-		// split it out into either ("dir" and "filename") or "filepath"? If
-		// filepath is present, go with that. Otherwise use filepath :=
-		// path.Join(dir, filename). There is a possibility that we get a bad
-		// dir but the user can't do anything about it because they're not
-		// savvy enough to edit the query string directly (we're not exposing
-		// dir as a HTML form input field). Maybe if the GET request notices
-		// dir is not valid, it scrubs the dir query param and the form falls
-		// back to "filepath" mode? Yes, do that. That way, we don't ever need
-		// to expose error sessions on the dir field because if present it's
-		// always valid (otherwise it would be scrubbed).
-		//
-		// And if the POST side receives a bad dir, it joins the dir and the
-		// filename and redirects to a form without "dir" (in "filepath" mode).
-
-		// Step 1: Validate the name (starts with posts, notes, pages, templates or assets) (no forbidden characters)
-		// Step 2: Validate the name format. (the right number of segments, the right file extensions) (if postID or noteID is missing, here is the step to automatically generate a new one)
-		// Step 3: OpenWriter and close it immediately, then redirect the user to the corresponding resource path.
+		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, filepath.Dir(filePath)))
+		if err != nil {
+			errmsg := err.Error()
+			if errors.Is(err, fs.ErrNotExist) {
+				errmsg = "parent folder does not exist"
+			}
+			if filePathProvided {
+				data.Errors.Add("file_path", errmsg)
+			} else {
+				data.Errors.Add("folder_path", errmsg)
+			}
+			writeResponse(w, r, data)
+			return
+		}
+		writer, err := OpenWriter(nbrew.FS, filePath)
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		err = writer.Close()
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		writeResponse(w, r, data)
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
