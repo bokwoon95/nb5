@@ -480,24 +480,23 @@ func readFile(fsys fs.FS, name string) (string, error) {
 }
 
 func validatePath(path string, allowExtension bool) (errs []string) {
-	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
 	if path == "" {
-		errs = append(errs, "path cannot be empty")
+		errs = append(errs, "cannot be empty")
 	}
 	if strings.HasPrefix(path, "/") {
-		errs = append(errs, "path cannot have leading slash")
+		errs = append(errs, "cannot have leading slash")
 	}
 	if strings.HasSuffix(path, "/") {
-		errs = append(errs, "path cannot have trailing slash")
+		errs = append(errs, "cannot have trailing slash")
 	}
 	if strings.Contains(path, "//") {
-		errs = append(errs, "path cannot have multiple slashes next to each other")
+		errs = append(errs, "cannot have multiple slashes next to each other")
 	}
 	dotCount := strings.Count(path, ".")
 	if allowExtension && dotCount > 1 {
-		errs = append(errs, "dot/period . not allowed (other than for the extension)")
+		errs = append(errs, "too many periods (only one allowed in the extension)")
 	} else if dotCount > 0 {
-		errs = append(errs, "dot/period . not allowed")
+		errs = append(errs, "no periods allowed")
 	}
 	i := strings.IndexAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
@@ -505,6 +504,7 @@ func validatePath(path string, allowExtension bool) (errs []string) {
 	}
 	var b strings.Builder
 	str := path
+	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
 	for i := strings.IndexAny(str, forbiddenChars); i >= 0; i = strings.IndexAny(str, forbiddenChars) {
 		b.WriteByte(str[i])
 		str = str[i+1:]
@@ -532,11 +532,11 @@ func validatePath(path string, allowExtension bool) (errs []string) {
 func validateName(name string) (errs []string) {
 	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
 	if name == "" {
-		errs = append(errs, "name cannot be empty")
+		errs = append(errs, "cannot be empty")
 	}
 	dotCount := strings.Count(name, ".")
 	if dotCount > 1 {
-		errs = append(errs, "dot/period . not allowed (other than for the extension)")
+		errs = append(errs, "too many periods (only one allowed in the extension)")
 	}
 	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
