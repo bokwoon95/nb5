@@ -563,7 +563,7 @@ type contextKey struct{}
 
 var loggerKey = &contextKey{}
 
-func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
+func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	type Data struct {
 		Errors []string `json:"errors,omitempty"`
 
@@ -587,16 +587,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		slog.String("sitePrefix", sitePrefix),
 	)
 	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
-	if nbrew.DB == nil {
-		nbrew.notFound(w, r, sitePrefix)
-		return
-	}
-
-	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
-	if segment != "" {
-		nbrew.notFound(w, r, sitePrefix)
-		return
-	}
 
 	switch r.Method {
 	case "GET":
