@@ -478,12 +478,12 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-func validateName(name string) (errs []string) {
+func validateName(name string) (errmsgs []string) {
 	if name == "" {
 		return []string{"cannot be empty"}
 	}
 	if strings.ContainsAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		errs = append(errs, "no uppercase letters [A-Z] allowed")
+		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
 	}
 	const forbiddenChars = " !\";#$%&'()*+,/:;<>=?[]\\^`{}|~"
 	var b strings.Builder
@@ -498,33 +498,33 @@ func validateName(name string) (errs []string) {
 		str = str[i+1:]
 	}
 	if b.Len() > 0 {
-		errs = append(errs, "forbidden characters: "+b.String())
+		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
 	}
 	switch strings.ToLower(name) {
 	// Windows forbidden file names.
 	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
 		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
 		"lpt6", "lpt7", "lpt8", "lpt9":
-		errs = append(errs, "forbidden name")
+		errmsgs = append(errmsgs, "forbidden name")
 	}
-	return errs
+	return errmsgs
 }
 
-func validatePath(path string) (errs []string) {
+func validatePath(path string) (errmsgs []string) {
 	if path == "" {
 		return []string{"cannot be empty"}
 	}
 	if strings.HasPrefix(path, "/") {
-		errs = append(errs, "cannot have leading slash")
+		errmsgs = append(errmsgs, "cannot have leading slash")
 	}
 	if strings.HasSuffix(path, "/") {
-		errs = append(errs, "cannot have trailing slash")
+		errmsgs = append(errmsgs, "cannot have trailing slash")
 	}
 	if strings.Contains(path, "//") {
-		errs = append(errs, "cannot have multiple slashes next to each other")
+		errmsgs = append(errmsgs, "cannot have multiple slashes next to each other")
 	}
 	if strings.ContainsAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		errs = append(errs, "no uppercase letters [A-Z] allowed")
+		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
 	}
 	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
 	var b strings.Builder
@@ -539,7 +539,7 @@ func validatePath(path string) (errs []string) {
 		str = str[i+1:]
 	}
 	if b.Len() > 0 {
-		errs = append(errs, "forbidden characters: "+b.String())
+		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
 	}
 	var names []string
 	str = path
@@ -553,9 +553,9 @@ func validatePath(path string) (errs []string) {
 		}
 	}
 	if len(names) > 0 {
-		errs = append(errs, "forbidden name(s): "+strings.Join(names, ", "))
+		errmsgs = append(errmsgs, "forbidden name(s): "+strings.Join(names, ", "))
 	}
-	return errs
+	return errmsgs
 }
 
 type contextKey struct{}
@@ -749,6 +749,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			r.URL.RawQuery = ""
 			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
+
 		var data Data
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if contentType == "application/json" {
@@ -774,6 +775,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FilePath = r.Form.Get("file_path")
 		}
 
+		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
+			data.Errors = []string{"no values provided"}
+			writeResponse(w, r, data)
+			return
+		}
+
 		// filePathProvided tracks whether the user provided file_path or
 		// folder_path and file_name.
 		var filePathProvided bool
@@ -782,18 +789,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// file_path or path.Join(folder_path, file_name).
 		var filePath string
 
-		// ext is the extension of the file.
-		var ext string
-
-		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
-			data.Errors = []string{"no values provided"}
-			writeResponse(w, r, data)
-			return
-		}
 		if data.FilePath != "" {
 			filePathProvided = true
 			filePath = data.FilePath
-			ext = filepath.Ext(data.FilePath)
 			data.FolderPath = ""
 			data.FileName = ""
 			data.FilePathErrors = validatePath(data.FilePath)
@@ -804,7 +802,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		} else {
 			filePathProvided = false
 			filePath = path.Join(data.FolderPath, data.FileName)
-			ext = filepath.Ext(data.FileName)
 			data.FilePath = ""
 			data.FolderPathErrors = validatePath(data.FolderPath)
 			data.FileNameErrors = validateName(data.FileName)
@@ -813,10 +810,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		}
+
 		head, tail, _ := strings.Cut(filePath, "/")
 		switch head {
 		case "posts", "notes":
-			if strings.Count(tail, "/") > 1 {
+			slashCount := strings.Count(tail, "/")
+			if slashCount > 1 {
 				const errmsg = "cannot create a file here"
 				if filePathProvided {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
@@ -827,16 +826,14 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 			if tail == "" {
-				filePath = path.Join(filePath, strings.ToLower(ulid.Make().String())+".md")
-				ext = ".md"
-			} else if !strings.Contains(tail, "/") && !strings.HasSuffix(tail, ".md") {
-				_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, "posts", tail))
-				if err == nil {
-					filePath = path.Join(filePath, strings.ToLower(ulid.Make().String())+".md")
-					ext = ".md"
+				filePath += "/" + strings.ToLower(ulid.Make().String()) + ".md"
+			} else if slashCount == 0 && filepath.Ext(tail) != ".md" {
+				fileinfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, "posts", tail))
+				if err == nil && fileinfo.IsDir() {
+					filePath += "/" + strings.ToLower(ulid.Make().String()) + ".md"
 				}
 			}
-			if ext != ".md" {
+			if filepath.Ext(filePath) != ".md" {
 				const errmsg = "invalid extension (must end in .md)"
 				if filePathProvided {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
@@ -847,7 +844,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		case "pages", "templates":
-			if ext != ".html" {
+			if filepath.Ext(filePath) != ".html" {
 				const errmsg = "invalid extension (must end in .html)"
 				if filePathProvided {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
@@ -858,6 +855,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 		case "assets":
+			ext := filepath.Ext(filePath)
 			allowedExts := []string{
 				".html", ".css", ".js", ".md", ".txt",
 				".jpeg", ".jpg", ".png", ".gif", ".svg", ".ico",
