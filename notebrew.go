@@ -704,10 +704,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				http.Redirect(w, r, redirectURL, http.StatusFound)
 				return
 			}
-			if len(data.Errors[""]) > 0 {
-				http.Error(w, strings.Join(data.Errors[""], "\n"), http.StatusBadRequest)
-				return
-			}
 			var sessionToken [8 + 16]byte
 			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
 			_, err := rand.Read(sessionToken[8:])
