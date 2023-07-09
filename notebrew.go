@@ -554,7 +554,7 @@ func validatePath(path string) (errs []string) {
 		}
 	}
 	if len(names) > 0 {
-		errs = append(errs, "forbidden names: "+strings.Join(names, ", "))
+		errs = append(errs, "forbidden name(s): "+strings.Join(names, ", "))
 	}
 	return errs
 }
