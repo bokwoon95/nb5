@@ -749,13 +749,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				writeResponse(w, r, data)
 				return
 			}
-			if tail == "" {
+			if tail == "" || (!strings.Contains(tail, "/") && filepath.Ext(tail) == "") {
 				filePath += "/" + strings.ToLower(ulid.Make().String()) + ".md"
-			} else if slashCount == 0 && filepath.Ext(tail) != ".md" {
-				fileinfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, "posts", tail))
-				if err == nil && fileinfo.IsDir() {
-					filePath += "/" + strings.ToLower(ulid.Make().String()) + ".md"
-				}
 			}
 			if filepath.Ext(filePath) != ".md" {
 				const errmsg = "invalid extension (must end in .md)"
