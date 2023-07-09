@@ -575,6 +575,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 
 		Errors url.Values `json:"errors,omitempty"`
 	}
+
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
 	if !ok {
 		logger = slog.Default()
@@ -589,11 +590,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		nbrew.notFound(w, r, sitePrefix)
 		return
 	}
+
 	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
 	if segment != "" {
 		nbrew.notFound(w, r, sitePrefix)
 		return
 	}
+
 	switch r.Method {
 	case "GET":
 		var data Data
