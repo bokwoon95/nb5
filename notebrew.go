@@ -643,7 +643,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FolderPath = r.Form.Get("folder_path")
 			data.FileName = r.Form.Get("file_name")
 			data.FilePath = r.Form.Get("file_path")
-		} else {
+		} else if sessionTokenHash != nil {
 			createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionTokenHash[:8])), 0)
 			if time.Now().Sub(createdAt) <= 5*time.Minute {
 				data, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
