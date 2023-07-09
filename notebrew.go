@@ -16,7 +16,6 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -565,13 +564,16 @@ var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	type Data struct {
-		FolderPath string `json:"folder_path,omitempty"`
+		Errors []string `json:"errors,omitempty"`
 
-		FileName string `json:"file_name,omitempty"`
+		FolderPath       string   `json:"folder_path,omitempty"`
+		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
 
-		FilePath string `json:"file_path,omitempty"`
+		FileName       string   `json:"file_name,omitempty"`
+		FileNameErrors []string `json:"file_name_errors,omitempty"`
 
-		Errors url.Values `json:"errors,omitempty"`
+		FilePath       string   `json:"file_path,omitempty"`
+		FilePathErrors []string `json:"file_path_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -688,7 +690,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				w.Write(b)
 				return
 			}
-			if len(data.Errors) == 0 {
+			if len(data.Errors) == 0 &&
+				len(data.FilePathErrors) == 0 &&
+				len(data.FolderPathErrors) == 0 &&
+				len(data.FileNameErrors) == 0 {
 				filePath := data.FilePath
 				if filePath == "" {
 					filePath = path.Join(data.FolderPath, data.FileName)
@@ -780,48 +785,43 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// ext is the extension of the file.
 		var ext string
 
-		data.Errors = make(url.Values)
-
 		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
-			data.Errors.Add("", "either file_path or folder_path and file_name must be provided")
-		} else if data.FilePath != "" {
+			data.Errors = []string{"no values provided"}
+			writeResponse(w, r, data)
+			return
+		}
+		if data.FilePath != "" {
 			filePathProvided = true
 			filePath = data.FilePath
 			ext = filepath.Ext(data.FilePath)
 			data.FolderPath = ""
 			data.FileName = ""
-			errs := validatePath(strings.TrimSuffix(data.FilePath, ext))
-			if len(errs) > 0 {
-				data.Errors["file_path"] = errs
+			data.FilePathErrors = validatePath(data.FilePath)
+			if len(data.FilePathErrors) > 0 {
+				writeResponse(w, r, data)
+				return
 			}
 		} else {
 			filePathProvided = false
 			filePath = path.Join(data.FolderPath, data.FileName)
 			ext = filepath.Ext(data.FileName)
 			data.FilePath = ""
-			errs := validatePath(data.FolderPath)
-			if len(errs) > 0 {
-				data.Errors["folder_path"] = errs
-			}
-			errs = validateName(strings.TrimSuffix(data.FileName, ext))
-			if len(errs) > 0 {
-				data.Errors["file_name"] = errs
+			data.FolderPathErrors = validatePath(data.FolderPath)
+			data.FileNameErrors = validateName(data.FileName)
+			if len(data.FolderPathErrors) > 0 || len(data.FileNameErrors) > 0 {
+				writeResponse(w, r, data)
+				return
 			}
 		}
-		if len(data.Errors) > 0 {
-			writeResponse(w, r, data)
-			return
-		}
-
 		head, tail, _ := strings.Cut(filePath, "/")
 		switch head {
 		case "posts", "notes":
 			if strings.Count(tail, "/") > 1 {
 				const errmsg = "cannot create a file here"
 				if filePathProvided {
-					data.Errors.Add("file_path", errmsg)
+					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
-					data.Errors.Add("folder_path", errmsg)
+					data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
 				}
 				writeResponse(w, r, data)
 				return
@@ -839,9 +839,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			if ext != ".md" {
 				const errmsg = "invalid extension (must end in .md)"
 				if filePathProvided {
-					data.Errors.Add("file_path", errmsg)
+					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
-					data.Errors.Add("file_name", errmsg)
+					data.FileNameErrors = append(data.FileNameErrors, errmsg)
 				}
 				writeResponse(w, r, data)
 				return
@@ -850,9 +850,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			if ext != ".html" {
 				const errmsg = "invalid extension (must end in .html)"
 				if filePathProvided {
-					data.Errors.Add("file_path", errmsg)
+					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
-					data.Errors.Add("file_name", errmsg)
+					data.FileNameErrors = append(data.FileNameErrors, errmsg)
 				}
 				writeResponse(w, r, data)
 				return
@@ -874,9 +874,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			if !match {
 				errmsg := fmt.Sprintf("invalid extension (must end in one of: %s)", strings.Join(allowedExts, ", "))
 				if filePathProvided {
-					data.Errors.Add("file_path", errmsg)
+					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
-					data.Errors.Add("file_name", errmsg)
+					data.FileNameErrors = append(data.FileNameErrors, errmsg)
 				}
 				writeResponse(w, r, data)
 				return
@@ -884,9 +884,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		default:
 			const errmsg = "path has to start with posts, notes, pages, templates or assets"
 			if filePathProvided {
-				data.Errors.Add("file_path", errmsg)
+				data.FilePathErrors = append(data.FilePathErrors, errmsg)
 			} else {
-				data.Errors.Add("folder_path", errmsg)
+				data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
 			}
 			writeResponse(w, r, data)
 			return
@@ -899,9 +899,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				errmsg = "parent folder does not exist"
 			}
 			if filePathProvided {
-				data.Errors.Add("file_path", errmsg)
+				data.FilePathErrors = append(data.FilePathErrors, errmsg)
 			} else {
-				data.Errors.Add("folder_path", errmsg)
+				data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
 			}
 			writeResponse(w, r, data)
 			return

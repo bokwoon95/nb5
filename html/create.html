@@ -6,17 +6,33 @@
 <link rel="stylesheet" href="/admin/static/styles.css">
 <title>Create file</title>
 <form method="post">
+    {{- if .Errors }}
+    <ul>
+        {{- range $error := .Errors }}
+        <li itemprop="errors">{{ $error }}
+        {{- end }}
+    </ul>
+    {{- end }}
     {{- if .FolderPath }}
-    <input type="hidden" name="folder_path" value="{{ .FolderPath }}">
-    <div>Creating file in folder: {{ .FolderPath }}</div>
+    <input type="hidden" name="folder_path" value="{{ .FolderPath }}" itemprop="folder_path">
+    <div>
+        <div>Creating file in folder: {{ .FolderPath }}</div>
+        {{- if .FolderPathErrors }}
+        <ul>
+            {{- range $error := .FolderPathErrors }}
+            <li itemprop="folder_path_errors">{{ $error }}
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
     <div>
         <label for="file_name" class="db">File name</label>
-        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
-        {{- with $errmsgs := .Errmsgs "file_name" }}
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FileName }}" required itemprop="file_name">
+        {{- if .FileNameErrors }}
         <ul>
-            {{- range $errmsg := $errmsgs }}
-            <li>{{ $errmsg }}
+            {{- range $error := $FileNameErrors }}
+            <li itemprop="file_name_errors">{{ $error }}
             {{- end }}
         </ul>
         {{- end }}
@@ -24,12 +40,12 @@
     {{- else }}
     <div>
         <label for="file_path" class="db">File path</label>
-        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" required>
-        {{- with $errmsgs := .Errmsgs "file_path" }}
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FilePath }}" required itemprop="file_path">
+        {{- if .FilePathErrors }}
         <ul>
-            {{- range $errmsg := $errmsgs }}
-            <li>{{ $errmsg }}
+            {{- range $error := .FilePathErrors }}
+            <li itemprop="file_path_errors">{{ $error }}
             {{- end }}
         </ul>
         {{- end }}
