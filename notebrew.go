@@ -480,23 +480,24 @@ func readFile(fsys fs.FS, name string) (string, error) {
 }
 
 func validateName(name string) (errs []string) {
-	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
 	if name == "" {
-		errs = append(errs, "cannot be empty")
-	}
-	dotCount := strings.Count(name, ".")
-	if dotCount > 1 {
-		errs = append(errs, "too many periods (only one allowed in the extension)")
+		return []string{"cannot be empty"}
 	}
 	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
 		errs = append(errs, "no uppercase letters [A-Z] allowed")
 	}
+	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
 	var b strings.Builder
-	tempName := name
-	for i := strings.IndexAny(tempName, forbiddenChars); i >= 0; i = strings.IndexAny(tempName, forbiddenChars) {
-		b.WriteByte(tempName[i])
-		tempName = tempName[i+1:]
+	str := name
+	written := make(map[byte]struct{})
+	for i := strings.IndexAny(str, forbiddenChars); i >= 0; i = strings.IndexAny(str, forbiddenChars) {
+		char := str[i]
+		if _, ok := written[char]; !ok {
+			written[char] = struct{}{}
+			b.WriteByte(char)
+		}
+		str = str[i+1:]
 	}
 	if b.Len() > 0 {
 		errs = append(errs, "forbidden characters: "+b.String())
@@ -511,9 +512,9 @@ func validateName(name string) (errs []string) {
 	return errs
 }
 
-func validatePath(path string, allowExtension bool) (errs []string) {
+func validatePath(path string) (errs []string) {
 	if path == "" {
-		errs = append(errs, "cannot be empty")
+		return []string{"cannot be empty"}
 	}
 	if strings.HasPrefix(path, "/") {
 		errs = append(errs, "cannot have leading slash")
@@ -524,21 +525,20 @@ func validatePath(path string, allowExtension bool) (errs []string) {
 	if strings.Contains(path, "//") {
 		errs = append(errs, "cannot have multiple slashes next to each other")
 	}
-	dotCount := strings.Count(path, ".")
-	if allowExtension && dotCount > 1 {
-		errs = append(errs, "too many periods (only one allowed in the extension)")
-	} else if dotCount > 0 {
-		errs = append(errs, "no periods allowed")
-	}
 	i := strings.IndexAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
 		errs = append(errs, "no uppercase letters [A-Z] allowed")
 	}
+	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
 	var b strings.Builder
 	str := path
-	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
+	written := make(map[byte]struct{})
 	for i := strings.IndexAny(str, forbiddenChars); i >= 0; i = strings.IndexAny(str, forbiddenChars) {
-		b.WriteByte(str[i])
+		char := str[i]
+		if _, ok := written[char]; !ok {
+			written[char] = struct{}{}
+			b.WriteByte(char)
+		}
 		str = str[i+1:]
 	}
 	if b.Len() > 0 {
@@ -792,7 +792,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			ext = filepath.Ext(data.FilePath)
 			data.FolderPath = ""
 			data.FileName = ""
-			errs := validatePath(strings.TrimSuffix(data.FilePath, ext), true)
+			errs := validatePath(strings.TrimSuffix(data.FilePath, ext))
 			if len(errs) > 0 {
 				data.Errors["file_path"] = errs
 			}
@@ -801,7 +801,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			filePath = path.Join(data.FolderPath, data.FileName)
 			ext = filepath.Ext(data.FileName)
 			data.FilePath = ""
-			errs := validatePath(data.FolderPath, false)
+			errs := validatePath(data.FolderPath)
 			if len(errs) > 0 {
 				data.Errors["folder_path"] = errs
 			}
