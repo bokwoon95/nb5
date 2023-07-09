@@ -55,6 +55,52 @@ func Test_validateName(t *testing.T) {
 }
 
 func Test_validatePath(t *testing.T) {
+	type TestTable struct {
+		description string
+		path        string
+		wantErrs    []string
+	}
+
+	tests := []TestTable{{
+		description: "empty",
+		path:        "",
+		wantErrs: []string{
+			"cannot be empty",
+		},
+	}, {
+		description: "slashes",
+		path:        "/a/b//c/index.html/",
+		wantErrs: []string{
+			"cannot have leading slash",
+			"cannot have trailing slash",
+			"cannot have multiple slashes next to each other",
+		},
+	}, {
+		description: "uppercase and forbidden characters",
+		path:        "<<INDEX?.HTML>>",
+		wantErrs: []string{
+			"no uppercase letters [A-Z] allowed",
+			"forbidden characters: <?>",
+		},
+	}, {
+		description: "uppercase and forbidden name",
+		path:        "COM1",
+		wantErrs: []string{
+			"no uppercase letters [A-Z] allowed",
+			"forbidden name",
+		},
+	}}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Parallel()
+			gotErrs := validateName(tt.path)
+			if diff := testutil.Diff(gotErrs, tt.wantErrs); diff != "" {
+				t.Error(testutil.Callers(), diff)
+			}
+		})
+	}
 }
 
 func Test_create(t *testing.T) {
