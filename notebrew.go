@@ -483,11 +483,10 @@ func validateName(name string) (errs []string) {
 	if name == "" {
 		return []string{"cannot be empty"}
 	}
-	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	if i > 0 {
+	if strings.ContainsAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		errs = append(errs, "no uppercase letters [A-Z] allowed")
 	}
-	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
+	const forbiddenChars = " !\";#$%&'()*+,/:;<>=?[]\\^`{}|~"
 	var b strings.Builder
 	str := name
 	written := make(map[byte]struct{})
@@ -507,7 +506,7 @@ func validateName(name string) (errs []string) {
 	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
 		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
 		"lpt6", "lpt7", "lpt8", "lpt9":
-		errs = append(errs, "forbidden name: "+name)
+		errs = append(errs, "forbidden name")
 	}
 	return errs
 }
@@ -525,8 +524,7 @@ func validatePath(path string) (errs []string) {
 	if strings.Contains(path, "//") {
 		errs = append(errs, "cannot have multiple slashes next to each other")
 	}
-	i := strings.IndexAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	if i > 0 {
+	if strings.ContainsAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		errs = append(errs, "no uppercase letters [A-Z] allowed")
 	}
 	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
