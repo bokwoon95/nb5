@@ -847,8 +847,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	}
 }
 
-func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, data any, cookie *http.Cookie) error {
-	dataBytes, err := json.Marshal(data)
+func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {
+	dataBytes, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshaling JSON: %w", err)
 	}
@@ -882,7 +882,7 @@ func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, data a
 	return nil
 }
 
-func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name string, data any) (ok bool, err error) {
+func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name string, v any) (ok bool, err error) {
 	cookie, _ := r.Cookie(name)
 	if cookie == nil {
 		return false, nil
@@ -919,7 +919,7 @@ func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name s
 			return false, err
 		}
 	}
-	err = json.Unmarshal(dataBytes, data)
+	err = json.Unmarshal(dataBytes, v)
 	if err != nil {
 		return false, err
 	}
