@@ -112,4 +112,16 @@ func Test_validatePath(t *testing.T) {
 }
 
 func Test_create(t *testing.T) {
+	type TestTable struct {
+		description      string
+		notebrew         *Notebrew
+		expireLoginToken bool     // if true, modify the loginToken so that it counts as expired
+		siteNames        []string // site names to create for the user
+		visitSiteName    string   // site name to visit
+		method           string   // request method
+		path             string   // request path
+		rawQuery         string   // request GET query parameters
+		wantStatusCode   int      // response status code
+		wantLocation     string   // response Location header (without the raw query after the "?")
+	}
 }

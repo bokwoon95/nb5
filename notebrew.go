@@ -600,7 +600,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 
 	switch r.Method {
 	case "GET":
-		defer nbrew.clearSession(w, r, "flash_session")
 		err := r.ParseForm()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
@@ -617,6 +616,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				logger.Error(err.Error())
 			}
 		}
+		nbrew.clearSession(w, r, "flash_session")
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
 			logger.Error(err.Error())
