@@ -826,6 +826,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 
 		writer, err := OpenWriter(nbrew.FS, filePath)
 		if err != nil {
+			if errors.Is(err, ErrUnwritable) {
+				http.Error(w, fmt.Sprintf("501 Not Implemented: %v", err), http.StatusNotImplemented)
+				return
+			}
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
