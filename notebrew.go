@@ -479,8 +479,8 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
-func validatePath(path string) (errs []string) {
-	const forbiddenChars = " !\";#$%&'()*+,.:;<>=?[]\\^`{}|~"
+func validatePath(path string, allowExtension bool) (errs []string) {
+	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
 	if path == "" {
 		errs = append(errs, "path cannot be empty")
 	}
@@ -492,6 +492,12 @@ func validatePath(path string) (errs []string) {
 	}
 	if strings.Contains(path, "//") {
 		errs = append(errs, "path cannot have multiple slashes next to each other")
+	}
+	dotCount := strings.Count(path, ".")
+	if allowExtension && dotCount > 1 {
+		errs = append(errs, "dot/period . not allowed (other than for the extension)")
+	} else if dotCount > 0 {
+		errs = append(errs, "dot/period . not allowed")
 	}
 	i := strings.IndexAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
@@ -527,6 +533,10 @@ func validateName(name string) (errs []string) {
 	const forbiddenChars = " !\";#$%&'()*+,./:;<>=?[]\\^`{}|~"
 	if name == "" {
 		errs = append(errs, "name cannot be empty")
+	}
+	dotCount := strings.Count(name, ".")
+	if dotCount > 1 {
+		errs = append(errs, "dot/period . not allowed (other than for the extension)")
 	}
 	i := strings.IndexAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	if i > 0 {
@@ -758,6 +768,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		var isFilePath bool // Whether the user provided file_path or folder_path + file_name.
 		var filePath string
 		var ext string
+		// PROBLEM: I don't want to burden the user with typing out the file extension when in folder -> filename mode. Even if I do make filename plus extension mandatory, how do I convey that periods are not allowed in the filename itself?
 		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
 			data.Errors.Add("", "either file_path or folder_path and file_name must be provided")
 		} else if data.FilePath != "" {
@@ -766,7 +777,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			ext = filepath.Ext(data.FilePath)
 			data.FolderPath = ""
 			data.FileName = ""
-			errs := validatePath(strings.TrimSuffix(data.FilePath, ext))
+			errs := validatePath(strings.TrimSuffix(data.FilePath, ext), true)
 			if len(errs) > 0 {
 				data.Errors["file_path"] = errs
 			}
@@ -775,7 +786,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			filePath = path.Join(data.FolderPath, data.FileName)
 			ext = filepath.Ext(data.FileName)
 			data.FilePath = ""
-			errs := validatePath(data.FolderPath)
+			errs := validatePath(data.FolderPath, false)
 			if len(errs) > 0 {
 				data.Errors["folder_path"] = errs
 			}
