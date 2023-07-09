@@ -763,23 +763,23 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			writeResponse(w, r, data)
 			return
 		}
+		var filePath string
 		if data.FilePath != "" {
-			resource, _, _ := strings.Cut(data.FilePath, "/")
-			switch resource {
-			case "posts":
-			case "pages":
-			case "notes":
-			case "templates":
-			case "assets":
-			default:
-				data.Errors.Set("", "path has to start with posts")
+			filePath = data.FilePath
+			data.FolderPath = ""
+			data.FileName = ""
+			if errs := validatePath(data.FilePath); len(errs) > 0 {
+				data.Errors["file_path"] = errs
 			}
-		}
-		if errs := validatePath(data.FolderPath); len(errs) > 0 {
-			data.Errors["folder_path"] = errs
-		}
-		if errs := validateName(data.FileName); len(errs) > 0 {
-			data.Errors["file_name"] = errs
+		} else {
+			filePath = path.Join(data.FolderPath, data.FileName)
+			data.FilePath = ""
+			if errs := validatePath(data.FolderPath); len(errs) > 0 {
+				data.Errors["folder_path"] = errs
+			}
+			if errs := validateName(data.FileName); len(errs) > 0 {
+				data.Errors["file_name"] = errs
+			}
 		}
 		if len(data.Errors) > 0 {
 			writeResponse(w, r, data)
@@ -788,8 +788,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		// - prefix check
 		// - posts/notes structural check
 		// - file extension check
-		data.FilePath = path.Join(data.FolderPath, data.FileName)
-		resource, _, _ := strings.Cut(data.FilePath, "/")
+		resource, _, _ := strings.Cut(filePath, "/")
 		switch resource {
 		case "posts":
 		case "pages":
@@ -797,9 +796,17 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		case "templates":
 		case "assets":
 		default:
-			response.StatusCode = http.StatusBadRequest
-			response.Errmsg = "path has to start with posts, pages, notes, templates or assets"
-			writeResponse(w, r, response)
+			key := "folder_path"
+			if data.FilePath != "" {
+				key = "file_path"
+			}
+			data.Errors.Add(key, "")
+			if data.FilePath != "" {
+				data.Errors.Add("file_path", "path has to start with posts, pages, notes, templates or assets")
+			} else {
+				data.Errors.Add("folder_path", "path has to start with posts, pages, notes, templates or assets")
+			}
+			writeResponse(w, r, data)
 			return
 		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
