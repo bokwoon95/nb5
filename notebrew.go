@@ -567,10 +567,13 @@ var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack string, sitePrefix string) {
 	type Data struct {
-		FolderPath string     `json:"folder_path,omitempty"`
-		FileName   string     `json:"file_name,omitempty"`
-		FilePath   string     `json:"file_path,omitempty"`
-		Errors     url.Values `json:"errors,omitempty"`
+		FolderPath string `json:"folder_path,omitempty"`
+
+		FileName string `json:"file_name,omitempty"`
+
+		FilePath string `json:"file_path,omitempty"`
+
+		Errors url.Values `json:"errors,omitempty"`
 	}
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
 	if !ok {
