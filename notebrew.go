@@ -796,18 +796,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 		case "templates":
 		case "assets":
 		default:
-			key := "folder_path"
+			const errmsg = "path has to start with posts, pages, notes, templates or assets"
 			if data.FilePath != "" {
-				key = "file_path"
-			}
-			data.Errors.Add(key, "")
-			if data.FilePath != "" {
-				data.Errors.Add("file_path", "path has to start with posts, pages, notes, templates or assets")
+				data.Errors.Add("file_path", errmsg)
 			} else {
-				data.Errors.Add("folder_path", "path has to start with posts, pages, notes, templates or assets")
+				data.Errors.Add("folder_path", errmsg)
 			}
 			writeResponse(w, r, data)
-			return
 		}
 		// TODO: first make sure either folder_path or file_path starts with one of the valid prefixes.
 		// TODO: then validate the path format - for posts and notes, must be {postID} or {category}/{postID}. {postID} can be empty, just generate one server side. For everything else, path must not be empty (after the prefix) and must have a valid extension (html, css, js, jpeg, jpg, gif, etc).
