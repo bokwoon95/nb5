@@ -726,9 +726,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 			})
-			redirectURL := *r.URL
-			redirectURL.RawQuery = ""
-			http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+			r.URL.RawQuery = ""
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
 		var data Data
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -755,16 +754,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 			data.FilePath = r.Form.Get("file_path")
 		}
 		data.Errors = make(url.Values)
-		if errs := validatePath(data.FilePath); len(errs) > 0 {
-			if data.FolderPath != "" {
-			} else {
-				data.Errors["file_path"] = errs
-			}
-			writeResponse(w, r, data)
-			return
-		}
 		var filePath string
-		if data.FilePath != "" {
+		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
+			data.Errors.Add("", "either file_path or folder_path and file_name must be provided")
+		} else if data.FilePath != "" {
 			filePath = data.FilePath
 			data.FolderPath = ""
 			data.FileName = ""
