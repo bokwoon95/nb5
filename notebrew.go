@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"embed"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -599,66 +600,21 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 
 	switch r.Method {
 	case "GET":
-		var data Data
-		var sessionTokenHash []byte
-		cookie, _ := r.Cookie("flash_session")
-		if cookie != nil {
-			http.SetCookie(w, &http.Cookie{
-				Path:     r.URL.Path,
-				Name:     "flash_session",
-				Value:    "",
-				Secure:   nbrew.Scheme == "https://",
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-				MaxAge:   -1,
-			})
-			sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
-			if err == nil {
-				sessionTokenHash = make([]byte, 8+blake2b.Size256)
-				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-				copy(sessionTokenHash[:8], sessionToken[:8])
-				copy(sessionTokenHash[8:], checksum[:])
-			}
-		}
-		if sessionTokenHash != nil {
-			defer func() {
-				_, err := sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
-					Dialect: nbrew.Dialect,
-					Format:  "DELETE FROM sessions WHERE session_token_hash = {sessionTokenHash}",
-					Values: []any{
-						sq.BytesParam("sessionTokenHash", sessionTokenHash),
-					},
-				})
-				if err != nil {
-					logger.Error(err.Error())
-				}
-			}()
-		}
+		defer nbrew.clearSession(w, r, "flash_session")
 		err := r.ParseForm()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 			return
 		}
+		var data Data
 		if len(r.Form) > 0 {
 			data.FolderPath = r.Form.Get("folder_path")
 			data.FileName = r.Form.Get("file_name")
 			data.FilePath = r.Form.Get("file_path")
-		} else if sessionTokenHash != nil {
-			createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionTokenHash[:8])), 0)
-			if time.Now().Sub(createdAt) <= 5*time.Minute {
-				data, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
-					Dialect: nbrew.Dialect,
-					Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
-					Values: []any{
-						sq.BytesParam("sessionTokenHash", sessionTokenHash),
-					},
-				}, func(row *sq.Row) Data {
-					row.JSON(&data, "data")
-					return data
-				})
-				if err != nil {
-					logger.Error(err.Error())
-				}
+		} else if ok {
+			_, err := nbrew.getSession(w, r, "flash_session", &data)
+			if err != nil {
+				logger.Error(err.Error())
 			}
 		}
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
@@ -690,64 +646,32 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				w.Write(b)
 				return
 			}
-			if len(data.Errors) == 0 &&
-				len(data.FilePathErrors) == 0 &&
-				len(data.FolderPathErrors) == 0 &&
-				len(data.FileNameErrors) == 0 {
-				filePath := data.FilePath
-				if filePath == "" {
-					filePath = path.Join(data.FolderPath, data.FileName)
-				}
-				var redirectURL string
-				if nbrew.MultisiteMode == "subdirectory" {
-					redirectURL = "/" + path.Join(sitePrefix, "admin", filePath)
-				} else {
-					redirectURL = "/" + path.Join("admin", filePath)
-				}
-				http.Redirect(w, r, redirectURL, http.StatusFound)
+			if len(data.Errors) > 0 ||
+				len(data.FilePathErrors) > 0 ||
+				len(data.FolderPathErrors) > 0 ||
+				len(data.FileNameErrors) > 0 {
+				nbrew.setSession(w, r, data, &http.Cookie{
+					Path:     r.URL.Path,
+					Name:     "flash_session",
+					Secure:   nbrew.Scheme == "https://",
+					HttpOnly: true,
+					SameSite: http.SameSiteLaxMode,
+				})
+				r.URL.RawQuery = ""
+				http.Redirect(w, r, r.URL.String(), http.StatusFound)
 				return
 			}
-			var sessionToken [8 + 16]byte
-			binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
-			_, err := rand.Read(sessionToken[8:])
-			if err != nil {
-				logger.Error(err.Error())
-				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-				return
+			filePath := data.FilePath
+			if filePath == "" {
+				filePath = path.Join(data.FolderPath, data.FileName)
 			}
-			var sessionTokenHash [8 + blake2b.Size256]byte
-			checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-			copy(sessionTokenHash[:8], sessionToken[:8])
-			copy(sessionTokenHash[8:], checksum[:])
-			dataBytes, err := json.Marshal(&data)
-			if err != nil {
-				logger.Error(err.Error())
-				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-				return
+			var redirectURL string
+			if nbrew.MultisiteMode == "subdirectory" {
+				redirectURL = "/" + path.Join(sitePrefix, "admin", filePath)
+			} else {
+				redirectURL = "/" + path.Join("admin", filePath)
 			}
-			_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
-				Dialect: nbrew.Dialect,
-				Format:  "INSERT INTO sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
-				Values: []any{
-					sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
-					sq.BytesParam("data", dataBytes),
-				},
-			})
-			if err != nil {
-				logger.Error(err.Error())
-				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-			http.SetCookie(w, &http.Cookie{
-				Path:     r.URL.Path,
-				Name:     "flash_session",
-				Value:    strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0"),
-				Secure:   nbrew.Scheme == "https://",
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-			})
-			r.URL.RawQuery = ""
-			http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
 		}
 
 		var data Data
@@ -923,5 +847,118 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	}
 }
 
-func (nbrew *Notebrew) newSession() {
+func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, data any, cookie *http.Cookie) error {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("marshaling JSON: %w", err)
+	}
+	if nbrew.DB == nil {
+		cookie.Value = base64.URLEncoding.EncodeToString(dataBytes)
+	} else {
+		var sessionToken [8 + 16]byte
+		binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
+		_, err := rand.Read(sessionToken[8:])
+		if err != nil {
+			return fmt.Errorf("reading rand: %w", err)
+		}
+		var sessionTokenHash [8 + blake2b.Size256]byte
+		checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+		copy(sessionTokenHash[:8], sessionToken[:8])
+		copy(sessionTokenHash[8:], checksum[:])
+		_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+			Dialect: nbrew.Dialect,
+			Format:  "INSERT INTO sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
+			Values: []any{
+				sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+				sq.BytesParam("data", dataBytes),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("saving session: %w", err)
+		}
+		cookie.Value = strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0")
+	}
+	http.SetCookie(w, cookie)
+	return nil
+}
+
+func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name string, data any) (ok bool, err error) {
+	cookie, _ := r.Cookie(name)
+	if cookie == nil {
+		return false, nil
+	}
+	var dataBytes []byte
+	if nbrew.DB == nil {
+		dataBytes, err = base64.URLEncoding.DecodeString(cookie.Value)
+		if err != nil {
+			return false, nil
+		}
+	} else {
+		sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
+		if err != nil {
+			return false, nil
+		}
+		var sessionTokenHash [8 + blake2b.Size256]byte
+		checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+		copy(sessionTokenHash[:8], sessionToken[:8])
+		copy(sessionTokenHash[8:], checksum[:])
+		createdAt := time.Unix(int64(binary.BigEndian.Uint64(sessionTokenHash[:8])), 0)
+		if time.Now().Sub(createdAt) > 5*time.Minute {
+			return false, nil
+		}
+		dataBytes, err = sq.FetchOneContext(r.Context(), nbrew.DB, sq.CustomQuery{
+			Dialect: nbrew.Dialect,
+			Format:  "SELECT {*} FROM sessions WHERE session_token_hash = {sessionTokenHash}",
+			Values: []any{
+				sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+			},
+		}, func(row *sq.Row) []byte {
+			return row.Bytes("data")
+		})
+		if err != nil {
+			return false, err
+		}
+	}
+	err = json.Unmarshal(dataBytes, data)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (nbrew *Notebrew) clearSession(w http.ResponseWriter, r *http.Request, name string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:   name,
+		Value:  "",
+		MaxAge: -1,
+	})
+	if nbrew.DB == nil {
+		return
+	}
+	cookie, _ := r.Cookie(name)
+	if cookie == nil {
+		return
+	}
+	sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
+	if err != nil {
+		return
+	}
+	var sessionTokenHash [8 + blake2b.Size256]byte
+	checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+	copy(sessionTokenHash[:8], sessionToken[:8])
+	copy(sessionTokenHash[8:], checksum[:])
+	_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
+		Dialect: nbrew.Dialect,
+		Format:  "DELETE FROM sessions WHERE session_token_hash = {sessionTokenHash}",
+		Values: []any{
+			sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
+		},
+	})
+	if err != nil {
+		logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+		if !ok {
+			logger = slog.Default()
+		}
+		logger.Error(err.Error())
+	}
 }
