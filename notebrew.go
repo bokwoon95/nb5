@@ -688,8 +688,17 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 				return
 			}
 			if len(data.Errors) == 0 {
-				// TODO: means no errors, 302 redirect to resource.
-				http.Redirect(w, r, "", http.StatusFound)
+				filePath := data.FilePath
+				if filePath == "" {
+					filePath = path.Join(data.FolderPath, data.FileName)
+				}
+				var redirectURL string
+				if nbrew.MultisiteMode == "subdirectory" {
+					redirectURL = "/" + path.Join(sitePrefix, "admin", filePath)
+				} else {
+					redirectURL = "/" + path.Join("admin", filePath)
+				}
+				http.Redirect(w, r, redirectURL, http.StatusFound)
 				return
 			}
 			if len(data.Errors[""]) > 0 {
