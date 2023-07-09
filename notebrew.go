@@ -448,7 +448,7 @@ func ParseTemplate(fsys fs.FS, funcMap template.FuncMap, text string) (*template
 	return finalTemplate, nil
 }
 
-func (nbrew *Notebrew) notFound(w http.ResponseWriter, r *http.Request) {
+func (nbrew *Notebrew) notFound(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	if r.Method == "GET" {
 		// TODO: search the user's 400.html template and render that if found.
 		http.Error(w, "404 Not Found", http.StatusNotFound)
@@ -586,12 +586,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, stack stri
 	)
 	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
 	if nbrew.DB == nil {
-		nbrew.notFound(w, r)
+		nbrew.notFound(w, r, sitePrefix)
 		return
 	}
 	segment, _, _ := strings.Cut(strings.Trim(stack, "/"), "/")
 	if segment != "" {
-		nbrew.notFound(w, r)
+		nbrew.notFound(w, r, sitePrefix)
 		return
 	}
 	switch r.Method {
