@@ -126,14 +126,16 @@ func Test_create(t *testing.T) {
 	type TestTable struct {
 		description    string
 		notebrew       *Notebrew
-		header         http.Header // request header
-		method         string      // request method
-		url            string      // request url
-		rawQuery       string      // request GET query parameters
-		body           io.Reader   // request POST body
-		wantStatusCode int         // response status code
-		wantPageValues url.Values  // values extracted from parsing html microdata
-		wantLocation   string      // response Location header (without the raw query after the "?")
+		beforeHook     func(*testing.T, http.ResponseWriter, *http.Request) // TODO: need to include *Notebrew in the params?
+		header         http.Header                                          // request header
+		method         string                                               // request method
+		url            string                                               // request url
+		rawQuery       string                                               // request GET query parameters
+		body           io.Reader                                            // request POST body
+		wantStatusCode int                                                  // response status code
+		wantPageValues url.Values                                           // values extracted from parsing html microdata
+		wantLocation   string                                               // response Location header (without the raw query after the "?")
+		afterHook      func(*testing.T, http.ResponseWriter, *http.Request)
 	}
 }
 

@@ -640,13 +640,18 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				len(data.FilePathErrors) > 0 ||
 				len(data.FolderPathErrors) > 0 ||
 				len(data.FileNameErrors) > 0 {
-				nbrew.setSession(w, r, data, &http.Cookie{
+				err := nbrew.setSession(w, r, data, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
 					Secure:   nbrew.Scheme == "https://",
 					HttpOnly: true,
 					SameSite: http.SameSiteLaxMode,
 				})
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
 				r.URL.RawQuery = ""
 				http.Redirect(w, r, r.URL.String(), http.StatusFound)
 				return
