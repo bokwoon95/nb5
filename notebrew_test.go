@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"testing"
@@ -125,12 +126,14 @@ func Test_create(t *testing.T) {
 	type TestTable struct {
 		description    string
 		notebrew       *Notebrew
-		method         string // request method
-		header         http.Header
-		rawQuery       string    // request GET query parameters
-		body           io.Reader // request POST body
-		wantStatusCode int       // response status code
-		wantLocation   string    // response Location header (without the raw query after the "?")
+		header         http.Header // request header
+		method         string      // request method
+		url            string      // request url
+		rawQuery       string      // request GET query parameters
+		body           io.Reader   // request POST body
+		wantStatusCode int         // response status code
+		wantPageValues url.Values  // values extracted from parsing html microdata
+		wantLocation   string      // response Location header (without the raw query after the "?")
 	}
 }
 

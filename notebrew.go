@@ -838,9 +838,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 }
 
 func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {
-	dataBytes, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Errorf("marshaling JSON: %w", err)
+	dataBytes, ok := v.([]byte)
+	if !ok {
+		var err error
+		dataBytes, err = json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("marshaling JSON: %w", err)
+		}
 	}
 	if nbrew.DB == nil {
 		cookie.Value = base64.URLEncoding.EncodeToString(dataBytes)
@@ -909,9 +913,14 @@ func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name s
 			return false, err
 		}
 	}
-	err = json.Unmarshal(dataBytes, v)
-	if err != nil {
-		return false, err
+	bytesPtr, ok := v.(*[]byte)
+	if ok {
+		*bytesPtr = dataBytes
+	} else {
+		err = json.Unmarshal(dataBytes, v)
+		if err != nil {
+			return false, err
+		}
 	}
 	return true, nil
 }
