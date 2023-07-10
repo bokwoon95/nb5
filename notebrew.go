@@ -913,14 +913,13 @@ func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name s
 			return false, err
 		}
 	}
-	bytesPtr, ok := v.(*[]byte)
-	if ok {
-		*bytesPtr = dataBytes
-	} else {
-		err = json.Unmarshal(dataBytes, v)
-		if err != nil {
-			return false, err
-		}
+	if ptr, ok := v.(*[]byte); ok {
+		*ptr = dataBytes
+		return true, nil
+	}
+	err = json.Unmarshal(dataBytes, v)
+	if err != nil {
+		return false, err
 	}
 	return true, nil
 }
