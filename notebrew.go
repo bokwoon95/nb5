@@ -652,8 +652,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 					return
 				}
-				r.URL.RawQuery = ""
-				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+				redirectURL := *r.URL
+				redirectURL.RawQuery = ""
+				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
 			filePath := data.FilePath
