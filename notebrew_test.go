@@ -230,7 +230,7 @@ func (fsys TestFS) Move(oldpath, newpath string) error {
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			// If destination does not exist, the file or directory can safely
-			// take its place. Copy the data and filemode over.
+			// take its place. Move the data and filemode over.
 			delete(fsys.MapFS, oldpath)
 			fsys.MapFS[newpath] = &fstest.MapFile{
 				Data:    data,
@@ -256,6 +256,9 @@ func (fsys TestFS) Move(oldpath, newpath string) error {
 		}
 		return nil
 	}
+	// Otherwise, move the old file over to the newpath, replacing the current
+	// file.
+	delete(fsys.MapFS, oldpath)
 	fsys.MapFS[newpath] = &fstest.MapFile{
 		Data:    data,
 		Mode:    oldFileInfo.Mode(),
