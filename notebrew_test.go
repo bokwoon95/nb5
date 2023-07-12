@@ -139,6 +139,32 @@ func Test_create(t *testing.T) {
 	}
 }
 
+func Test_create_GET(t *testing.T) {
+	// invalid form
+	// folder_path, file_name, file_path filled in
+	// has valid session cookie
+}
+
+func Test_create_post(t *testing.T) {
+	// all fields empty (both Content-Type, Accept headers)
+	// name validation error (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// post doesn't start with posts, notes, pages, templates or assets (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// post | note created too deep in  (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// {category}/{postID} | {category}/{noteID} automatically generated  (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// post | note filename doesn't end in .md (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// page | template filename doesn't end in .html (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// asset filename doesn't have valid extension (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// parent folder doesn't exist (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+	// Using os.DirFS instead of TestFS causing ErrUnwritable (both Content-Type, Accept headers) (both file_path and folder_path + file_name)
+}
+
+// extract into separate function that tests *all* paths for a specific error condition:
+// - invalid JSON/url encoded values
+// - invalid HTTP methods
+// - nonexistent paths (404)
+// - missing or invalid authentication token
+
 type TestFS struct {
 	fstest.MapFS
 }

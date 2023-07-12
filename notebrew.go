@@ -600,7 +600,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			data.FolderPath = r.Form.Get("folder_path")
 			data.FileName = r.Form.Get("file_name")
 			data.FilePath = r.Form.Get("file_path")
-		} else if ok {
+		} else {
 			_, err := nbrew.getSession(w, r, "flash_session", &data)
 			if err != nil {
 				logger.Error(err.Error())
@@ -700,16 +700,16 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 
-		// filePathProvided tracks whether the user provided file_path or
+		// filePathProvidedByUser tracks whether the user provided file_path or
 		// folder_path and file_name.
-		var filePathProvided bool
+		var filePathProvidedByUser bool
 
 		// filePath is the path of the file to create, obtained from either
 		// file_path or path.Join(folder_path, file_name).
 		var filePath string
 
 		if data.FilePath != "" {
-			filePathProvided = true
+			filePathProvidedByUser = true
 			filePath = data.FilePath
 			data.FolderPath = ""
 			data.FileName = ""
@@ -719,7 +719,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				return
 			}
 		} else {
-			filePathProvided = false
+			filePathProvidedByUser = false
 			filePath = path.Join(data.FolderPath, data.FileName)
 			data.FilePath = ""
 			data.FolderPathErrors = validatePath(data.FolderPath)
@@ -736,7 +736,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			slashCount := strings.Count(tail, "/")
 			if slashCount > 1 {
 				const errmsg = "cannot create a file here"
-				if filePathProvided {
+				if filePathProvidedByUser {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
 					data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
@@ -749,7 +749,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			}
 			if filepath.Ext(filePath) != ".md" {
 				const errmsg = "invalid extension (must end in .md)"
-				if filePathProvided {
+				if filePathProvidedByUser {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
 					data.FileNameErrors = append(data.FileNameErrors, errmsg)
@@ -760,7 +760,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		case "pages", "templates":
 			if filepath.Ext(filePath) != ".html" {
 				const errmsg = "invalid extension (must end in .html)"
-				if filePathProvided {
+				if filePathProvidedByUser {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
 					data.FileNameErrors = append(data.FileNameErrors, errmsg)
@@ -785,7 +785,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			}
 			if !match {
 				errmsg := fmt.Sprintf("invalid extension (must end in one of: %s)", strings.Join(allowedExts, ", "))
-				if filePathProvided {
+				if filePathProvidedByUser {
 					data.FilePathErrors = append(data.FilePathErrors, errmsg)
 				} else {
 					data.FileNameErrors = append(data.FileNameErrors, errmsg)
@@ -795,7 +795,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			}
 		default:
 			const errmsg = "path has to start with posts, notes, pages, templates or assets"
-			if filePathProvided {
+			if filePathProvidedByUser {
 				data.FilePathErrors = append(data.FilePathErrors, errmsg)
 			} else {
 				data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
@@ -810,7 +810,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			if errors.Is(err, fs.ErrNotExist) {
 				errmsg = "parent folder does not exist"
 			}
-			if filePathProvided {
+			if filePathProvidedByUser {
 				data.FilePathErrors = append(data.FilePathErrors, errmsg)
 			} else {
 				data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
