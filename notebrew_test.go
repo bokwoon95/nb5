@@ -2,6 +2,7 @@ package nb5
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -9,12 +10,16 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/bokwoon95/nb5/internal/testutil"
+	"github.com/bokwoon95/sq"
+	"github.com/bokwoon95/sqddl/ddl"
 )
 
 func Test_validateName(t *testing.T) {
@@ -32,17 +37,17 @@ func Test_validateName(t *testing.T) {
 		},
 	}, {
 		description: "uppercase and forbidden characters",
-		name:        "<<INDEX?.HTML>>",
+		name:        "<<IN>>DEX?.HTML",
 		wantErrs: []string{
 			"no uppercase letters [A-Z] allowed",
-			"forbidden characters: <?>",
+			"forbidden characters: <>?",
 		},
 	}, {
 		description: "uppercase and forbidden characters",
-		name:        "<<INDEX?.HTML>>",
+		name:        "<<IN>>DEX?.HTML",
 		wantErrs: []string{
 			"no uppercase letters [A-Z] allowed",
-			"forbidden characters: <?>",
+			"forbidden characters: <>?",
 		},
 	}, {
 		description: "uppercase and forbidden name",
@@ -140,9 +145,65 @@ func Test_create(t *testing.T) {
 }
 
 func Test_create_GET(t *testing.T) {
-	// invalid form
+	type TestTable struct {
+		description    string
+		header         http.Header
+		rawQuery       string
+		sessionData    map[string]any
+		wantPageValues url.Values
+	}
+
+	tests := []TestTable{{
+		description: "basic",
+		wantPageValues: url.Values{
+			"file_path":   []string{""},
+			"folder_path": []string{""},
+			"file_name":   []string{""},
+		},
+	}, {
+		description: "folder_path, file_name provided",
+		rawQuery:    "folder_path=foo/bar&file_name=baz.md",
+		wantPageValues: url.Values{
+			"file_path":   []string{""},
+			"folder_path": []string{"foo/bar"},
+			"file_name":   []string{"baz.md"},
+		},
+	}, {
+		description: "file_path provided",
+		rawQuery:    "file_path=foo/bar/baz.md",
+		wantPageValues: url.Values{
+			"file_path":   []string{"foo/bar/baz.md"},
+			"folder_path": []string{""},
+			"file_name":   []string{""},
+		},
+	}, {
+		description: "valid session cookie",
+		header: http.Header{
+			"Cookie": []string{""},
+		},
+		wantPageValues: url.Values{
+			"file_path":   []string{"aaa"},
+			"folder_path": []string{"bbb"},
+			"file_name":   []string{"ccc"},
+		},
+	}, func() TestTable {
+		return TestTable{
+			description: "",
+		}
+	}(), {
+		description: "",
+	}}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Parallel()
+		})
+	}
+	// nothing
 	// folder_path, file_name, file_path filled in
 	// has valid session cookie
+	// the header has a flash_session cookie but queryString was supplied, take it out and probe the database with it to make sure the session was deleted successfully
 }
 
 func Test_create_post(t *testing.T) {
@@ -297,4 +358,32 @@ func (f *TestFile) Close() error {
 		ModTime: time.Now(),
 	}
 	return nil
+}
+
+var databaseCounter atomic.Int32
+
+func newDatabase(t *testing.T) *sql.DB {
+	count := databaseCounter.Add(1)
+	// DSN must follow the format described in
+	// https://github.com/mattn/go-sqlite3/issues/1036#issuecomment-1109264347.
+	// SQLite author recommends vfs=memdb over :memory: or mode=memory
+	// (https://sqlite.org/forum/forumpost/0359b21d172bd965).
+	db, err := sql.Open("sqlite3", "file:/"+strconv.Itoa(int(count))+"?vfs=memdb&_foreign_keys=true")
+	if err != nil {
+		t.Fatal(testutil.Callers(), err)
+	}
+	automigrateCmd := &ddl.AutomigrateCmd{
+		DB:             db,
+		Dialect:        sq.DialectSQLite,
+		DirFS:          schemaFS,
+		Filenames:      []string{"schema.go"},
+		DropObjects:    true,
+		AcceptWarnings: true,
+		Stderr:         io.Discard,
+	}
+	err = automigrateCmd.Run()
+	if err != nil {
+		t.Fatal(testutil.Callers(), err)
+	}
+	return db
 }
