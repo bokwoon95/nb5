@@ -147,6 +147,7 @@ func Test_create(t *testing.T) {
 func Test_create_GET(t *testing.T) {
 	type TestTable struct {
 		description    string
+		notebrew       *Notebrew
 		header         http.Header
 		rawQuery       string
 		sessionData    map[string]any
@@ -155,6 +156,14 @@ func Test_create_GET(t *testing.T) {
 
 	tests := []TestTable{{
 		description: "basic",
+		notebrew: &Notebrew{
+			DB:            newDatabase(t),
+			Dialect:       sq.DialectSQLite,
+			Scheme:        "https://",
+			AdminDomain:   "notebrew.com",
+			ContentDomain: "notebrew.blog",
+			MultisiteMode: "subdomain",
+		},
 		wantPageValues: url.Values{
 			"file_path":   []string{""},
 			"folder_path": []string{""},
