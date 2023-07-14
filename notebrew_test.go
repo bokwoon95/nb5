@@ -172,15 +172,12 @@ func Test_create_GET(t *testing.T) {
 	tests := []TestTable{{
 		description: "basic",
 		wantPageValues: url.Values{
-			"file_path":   []string{""},
-			"folder_path": []string{""},
-			"file_name":   []string{""},
+			"file_path": []string{""},
 		},
 	}, {
 		description: "folder_path and file_name provided",
 		rawQuery:    "folder_path=foo/bar&file_name=baz.md",
 		wantPageValues: url.Values{
-			"file_path":   []string{""},
 			"folder_path": []string{"foo/bar"},
 			"file_name":   []string{"baz.md"},
 		},
@@ -188,9 +185,7 @@ func Test_create_GET(t *testing.T) {
 		description: "file_path provided",
 		rawQuery:    "file_path=foo/bar/baz.md",
 		wantPageValues: url.Values{
-			"file_path":   []string{"foo/bar/baz.md"},
-			"folder_path": []string{""},
-			"file_name":   []string{""},
+			"file_path": []string{"foo/bar/baz.md"},
 		},
 	}, {
 		description: "session cookie",
@@ -226,7 +221,7 @@ func Test_create_GET(t *testing.T) {
 			},
 			"file_name": []string{"baz#$%&.md"},
 			"file_name_errors": []string{
-				"forbidden characters: #$%&",
+				"forbidden characters: #$%&amp;",
 			},
 		},
 	}}
@@ -273,7 +268,7 @@ func Test_create_GET(t *testing.T) {
 			}
 			var node *html.Node
 			nodes := []*html.Node{root}
-			// gotPageValues := make(url.Values)
+			gotPageValues := make(url.Values)
 			for len(nodes) > 0 {
 				node, nodes = nodes[len(nodes)-1], nodes[:len(nodes)-1]
 				if node == nil {
@@ -290,13 +285,39 @@ func Test_create_GET(t *testing.T) {
 				}
 				if hasItemprop {
 					switch node.DataAtom {
+					case atom.A:
+						for _, attr := range node.Attr {
+							if attr.Key == "href" {
+								itempropValue = attr.Val
+							}
+						}
 					case atom.Img:
+						for _, attr := range node.Attr {
+							if attr.Key == "src" {
+								itempropValue = attr.Val
+							}
+						}
+					case atom.Input:
+						for _, attr := range node.Attr {
+							if attr.Key == "value" {
+								itempropValue = attr.Val
+							}
+						}
 					default:
-						itempropValue = node.Data
+						var innerHTML strings.Builder
+						child := node.FirstChild
+						for child != nil {
+							html.Render(&innerHTML, child)
+							child = child.NextSibling
+						}
+						itempropValue = innerHTML.String()
 					}
+					gotPageValues.Add(itempropKey, strings.TrimSpace(itempropValue))
 				}
-				_, _ = itempropKey, itempropValue
 				nodes = append(nodes, node.NextSibling, node.FirstChild)
+			}
+			if diff := testutil.Diff(gotPageValues, tt.wantPageValues); diff != "" {
+				t.Error(testutil.Callers(), diff, body)
 			}
 		})
 	}
