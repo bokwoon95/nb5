@@ -674,7 +674,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				len(response.FilePathErrors) > 0 ||
 				len(response.FolderPathErrors) > 0 ||
 				len(response.FileNameErrors) > 0 {
-				err := nbrew.setSession(w, r, response, &http.Cookie{
+				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
 					Secure:   nbrew.Scheme == "https://",
