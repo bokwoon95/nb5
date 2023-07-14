@@ -272,13 +272,20 @@ func Test_create_GET(t *testing.T) {
 			}
 			cookie, _ := r.Cookie("flash_session")
 			if cookie != nil {
-				var b []byte
-				ok, err := nbrew.getSession(r, "flash_session", &b)
+				sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
-				if ok {
-					t.Errorf(testutil.Callers()+" session not cleared: %s", string(b))
+				var sessionTokenHash [8 + blake2b.Size256]byte
+				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+				copy(sessionTokenHash[:8], sessionToken[:8])
+				copy(sessionTokenHash[8:], checksum[:])
+				exists, err := sq.FetchExists(nbrew.DB, sq.CustomQuery{
+					Format: "SELECT 1 FROM sessions WHERE session_token_hash = {}",
+					Values: []any{sessionTokenHash[:]},
+				})
+				if exists {
+					t.Errorf(testutil.Callers() + " session not cleared")
 				}
 			}
 		})
@@ -287,12 +294,14 @@ func Test_create_GET(t *testing.T) {
 
 func Test_create_POST(t *testing.T) {
 	type TestTable struct {
-		description    string      // test description
+		description    string // test description
+		multisiteMode  string
 		header         http.Header // request header
-		body           string      // request POST body
+		folderPath     string
+		fileName       string
 		wantStatusCode int
 		wantLocation   string
-		wantData       any
+		wantData       string
 	}
 	// all fields empty (both Content-Type, Accept headers, multisitemode subdirectory)
 	// name validation error (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
@@ -473,14 +482,6 @@ func newDatabase(t *testing.T) *sql.DB {
 		t.Fatal(testutil.Callers(), err)
 	}
 	return db
-}
-
-func unhex(s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return b
 }
 
 func jsonify(v any) string {
