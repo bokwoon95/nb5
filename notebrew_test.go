@@ -269,6 +269,17 @@ func Test_create_GET(t *testing.T) {
 			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
 				t.Error(testutil.Callers(), diff, body)
 			}
+			cookie, _ := r.Cookie("flash_session")
+			if cookie != nil {
+				var b []byte
+				ok, err := nbrew.getSession(r, "flash_session", &b)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				if ok {
+					t.Errorf(testutil.Callers()+" session not deleted: %s", string(b))
+				}
+			}
 		})
 	}
 	// nothing

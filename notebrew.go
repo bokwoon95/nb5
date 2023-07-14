@@ -601,7 +601,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			data.FileName = r.Form.Get("file_name")
 			data.FilePath = r.Form.Get("file_path")
 		} else {
-			_, err := nbrew.getSession(w, r, "flash_session", &data)
+			_, err := nbrew.getSession(r, "flash_session", &data)
 			if err != nil {
 				logger.Error(err.Error())
 			}
@@ -882,7 +882,7 @@ func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any,
 	return nil
 }
 
-func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name string, v any) (ok bool, err error) {
+func (nbrew *Notebrew) getSession(r *http.Request, name string, v any) (ok bool, err error) {
 	cookie, _ := r.Cookie(name)
 	if cookie == nil {
 		return false, nil
@@ -916,6 +916,9 @@ func (nbrew *Notebrew) getSession(w http.ResponseWriter, r *http.Request, name s
 			return row.Bytes("data")
 		})
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
 			return false, err
 		}
 	}
