@@ -277,7 +277,7 @@ func Test_create_GET(t *testing.T) {
 					t.Fatal(testutil.Callers(), err)
 				}
 				if ok {
-					t.Errorf(testutil.Callers()+" session not deleted: %s", string(b))
+					t.Errorf(testutil.Callers()+" session not cleared: %s", string(b))
 				}
 			}
 		})
