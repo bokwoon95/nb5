@@ -30,6 +30,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/exp/slog"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 func Test_validateName(t *testing.T) {
@@ -262,12 +263,13 @@ func Test_create_GET(t *testing.T) {
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, "")
 			response := w.Result()
+			body := w.Body.String()
 			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
-				t.Fatal(testutil.Callers(), diff, w.Body.String())
+				t.Fatal(testutil.Callers(), diff, body)
 			}
-			root, err := html.Parse(w.Body)
+			root, err := html.Parse(strings.NewReader(body))
 			if err != nil {
-				t.Fatal(testutil.Callers(), err)
+				t.Fatal(testutil.Callers(), err, body)
 			}
 			var node *html.Node
 			nodes := []*html.Node{root}
@@ -277,6 +279,23 @@ func Test_create_GET(t *testing.T) {
 				if node == nil {
 					continue
 				}
+				hasItemprop := false
+				var itempropKey, itempropValue string
+				for _, attr := range node.Attr {
+					if attr.Key == "itemprop" {
+						hasItemprop = true
+						itempropKey = attr.Val
+						break
+					}
+				}
+				if hasItemprop {
+					switch node.DataAtom {
+					case atom.Img:
+					default:
+						itempropValue = node.Data
+					}
+				}
+				_, _ = itempropKey, itempropValue
 				nodes = append(nodes, node.NextSibling, node.FirstChild)
 			}
 		})
