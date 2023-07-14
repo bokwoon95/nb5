@@ -696,7 +696,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		}
 
 		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
-			data.Errors = []string{"no values provided"}
+			data.Errors = []string{"missing arguments"}
 			writeResponse(w, r, data)
 			return
 		}

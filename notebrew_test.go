@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -156,10 +155,10 @@ func Test_create(t *testing.T) {
 	}
 }
 
-func Test_create_GET(t *testing.T) {
+func Test_GET_create(t *testing.T) {
 	type TestTable struct {
 		description   string           // test description
-		seedQueries   []sq.CustomQuery // queries to seed database with
+		seedQueries   []sq.CustomQuery // SQL queries to seed database with
 		header        http.Header      // request header
 		rawQuery      string           // request GET query parameters
 		wantItemprops url.Values       // itemprops extracted from parsing response html microdata
@@ -194,7 +193,7 @@ func Test_create_GET(t *testing.T) {
 			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
 			Values: []any{
 				sessionTokenHash,
-				jsonify(map[string]any{
+				sq.JSONValue(map[string]any{
 					"folder_path": "/FOO///BAR/",
 					"folder_path_errors": []string{
 						"cannot have leading slash",
@@ -292,28 +291,119 @@ func Test_create_GET(t *testing.T) {
 	}
 }
 
-func Test_create_POST(t *testing.T) {
+func Test_POST_create(t *testing.T) {
 	type TestTable struct {
-		description    string // test description
-		multisiteMode  string
-		header         http.Header // request header
-		folderPath     string
-		fileName       string
-		wantStatusCode int
-		wantLocation   string
-		wantData       string
+		description          string      // test description
+		multisiteMode        string      // Notebrew.MultisiteMode
+		sitePrefix           string      // sitePrefix argument
+		header               http.Header // request header
+		folderPath           string      // request folder_path param
+		fileName             string      // request file_name param
+		wantStatusCode       int         // response status code
+		wantLocation         string      // response Location header (without the raw query after the "?")
+		wantErrors           []string
+		wantFolderPathErrors []string
+		wantFileNameErrors   []string
+	}
+
+	tests := []TestTable{{
+		description: "missing arguments",
+		wantErrors:  []string{"missing arguments"},
+	}, {
+		description: "name validation error",
+		folderPath:  "/FOO///BAR/",
+		fileName:    "baz#$%&.md",
+		wantFolderPathErrors: []string{
+			"cannot have leading slash",
+			"cannot have trailing slash",
+			"cannot have multiple slashes next to each other",
+			"no uppercase letters [A-Z] allowed",
+		},
+		wantFileNameErrors: []string{
+			"forbidden characters: #$%&",
+		},
+	}, {
+		description: "path doesn't start with posts, notes, pages, templates or assets",
+		folderPath:  "foo/bar",
+		fileName:    "baz.md",
+		wantFolderPathErrors: []string{
+			"path has to start with posts, notes, pages, templates or assets",
+		},
+	}, {
+		description: "post path cannot be created",
+		folderPath:  "posts/foo/bar",
+		fileName:    "baz.md",
+		wantFolderPathErrors: []string{
+			"cannot create a file here",
+		},
+	}, {
+		description: "note path cannot be created",
+		folderPath:  "notes/foo/bar",
+		fileName:    "baz.md",
+		wantFolderPathErrors: []string{
+			"cannot create a file here",
+		},
+	}, {
+		description: "post filename doesnt end in .md",
+		folderPath:  "posts",
+		fileName:    "baz.sh",
+		wantFolderPathErrors: []string{
+			"invalid extension (must end in .md)",
+		},
+	}, {
+		description: "note filename doesnt end in .md",
+		folderPath:  "notes",
+		fileName:    "baz.sh",
+		wantFolderPathErrors: []string{
+			"invalid extension (must end in .md)",
+		},
+	}, {
+		description: "page filename doesnt end in .html",
+		folderPath:  "pages/foo/bar",
+		fileName:    "baz.sh",
+		wantFolderPathErrors: []string{
+			"invalid extension (must end in .html)",
+		},
+	}, {
+		description: "template filename doesnt end in .html",
+		folderPath:  "templates/foo/bar",
+		fileName:    "baz.sh",
+		wantFolderPathErrors: []string{
+			"invalid extension (must end in .html)",
+		},
+	}, {
+		description: "asset filename doesnt have valid extension",
+		folderPath:  "templates/foo/bar",
+		fileName:    "baz.sh",
+		wantFolderPathErrors: []string{
+			"invalid extension (must end in one of: )",
+		},
+	}}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Run("json, file_path", func(t *testing.T) {
+				t.Parallel()
+			})
+			t.Run("html form, folder_path and file_name", func(t *testing.T) {
+				t.Parallel()
+			})
+		})
 	}
 	// all fields empty (both Content-Type, Accept headers, multisitemode subdirectory)
 	// name validation error (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// post doesn't start with posts, notes, pages, templates or assets (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// post | note created too deep in  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// {category}/{postID} | {category}/{noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
+	// post | note created too deep in (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// post | note filename doesn't end in .md (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// page | template filename doesn't end in .html (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// asset filename doesn't have valid extension (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// parent folder doesn't exist (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// Using os.DirFS instead of TestFS causing ErrUnwritable (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
+}
+
+func Test_POST_create_autogenerateID(t *testing.T) {
+	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 }
 
 // extract into separate function that tests *all* paths for a specific error condition:
@@ -482,15 +572,6 @@ func newDatabase(t *testing.T) *sql.DB {
 		t.Fatal(testutil.Callers(), err)
 	}
 	return db
-}
-
-func jsonify(v any) string {
-	var b strings.Builder
-	err := json.NewEncoder(&b).Encode(v)
-	if err != nil {
-		panic(err)
-	}
-	return b.String()
 }
 
 func newToken(tm time.Time) []byte {
