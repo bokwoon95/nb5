@@ -176,7 +176,7 @@ func Test_create_GET(t *testing.T) {
 		},
 	}, {
 		description: "folder_path and file_name provided",
-		rawQuery:    "folder_path=foo/bar&file_name=baz.md",
+		rawQuery:    "folder_path=foo/bar&file_name=baz.md&file_path=xxx",
 		wantItemprops: url.Values{
 			"folder_path": []string{"foo/bar"},
 			"file_name":   []string{"baz.md"},
@@ -282,10 +282,6 @@ func Test_create_GET(t *testing.T) {
 			}
 		})
 	}
-	// nothing
-	// folder_path, file_name, file_path filled in
-	// has valid session cookie
-	// the header has a flash_session cookie but queryString was supplied, take it out and probe the database with it to make sure the session was deleted successfully
 }
 
 func Test_create_post(t *testing.T) {
