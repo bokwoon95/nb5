@@ -2,7 +2,6 @@ package nb5
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/binary"
@@ -476,10 +475,6 @@ func Test_POST_create(t *testing.T) {
 					ContentDomain: "notebrew.blog",
 					MultisiteMode: "subdomain",
 				}
-				logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-					AddSource: true,
-				}))
-				ctx := context.WithValue(context.Background(), loggerKey, logger)
 				data := make(map[string]any)
 				if tt.filePath != "" {
 					data["file_path"] = tt.filePath
@@ -488,7 +483,7 @@ func Test_POST_create(t *testing.T) {
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
-				r, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(requestBody))
+				r, err := http.NewRequest("POST", "", bytes.NewReader(requestBody))
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
