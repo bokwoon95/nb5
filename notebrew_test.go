@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -193,7 +194,7 @@ func Test_create_GET(t *testing.T) {
 			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
 			Values: []any{
 				sessionTokenHash,
-				sq.JSONValue(map[string]any{
+				jsonify(map[string]any{
 					"folder_path": "/FOO///BAR/",
 					"folder_path_errors": []string{
 						"cannot have leading slash",
@@ -284,7 +285,15 @@ func Test_create_GET(t *testing.T) {
 	}
 }
 
-func Test_create_post(t *testing.T) {
+func Test_create_POST(t *testing.T) {
+	type TestTable struct {
+		description    string      // test description
+		header         http.Header // request header
+		body           string      // request POST body
+		wantStatusCode int
+		wantLocation   string
+		wantData       any
+	}
 	// all fields empty (both Content-Type, Accept headers, multisitemode subdirectory)
 	// name validation error (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// post doesn't start with posts, notes, pages, templates or assets (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
@@ -472,6 +481,15 @@ func unhex(s string) []byte {
 		panic(err)
 	}
 	return b
+}
+
+func jsonify(v any) string {
+	var b strings.Builder
+	err := json.NewEncoder(&b).Encode(v)
+	if err != nil {
+		panic(err)
+	}
+	return b.String()
 }
 
 func newToken(tm time.Time) []byte {
