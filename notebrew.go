@@ -712,6 +712,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
+			data.Errors = nil
+			data.FilePathErrors = nil
+			data.FolderPathErrors = nil
+			data.FileNameErrors = nil
 		} else {
 			err := r.ParseForm()
 			if err != nil {
@@ -895,7 +899,7 @@ func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any,
 		copy(sessionTokenHash[8:], checksum[:])
 		_, err = sq.ExecContext(r.Context(), nbrew.DB, sq.CustomQuery{
 			Dialect: nbrew.Dialect,
-			Format:  "INSERT INTO sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
+			Format:  "INSERT INTO sessions (session_token_hash, data) VALUES ({sessionTokenHash}, {data})",
 			Values: []any{
 				sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
 				sq.BytesParam("data", dataBytes),

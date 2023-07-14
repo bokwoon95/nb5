@@ -303,28 +303,28 @@ func Test_POST_create(t *testing.T) {
 		FilePathErrors   []string `json:"file_path_errors,omitempty"`
 	}
 	type TestTable struct {
-		description          string // test description
-		fsys                 fs.FS  // Notebrew.FS
-		multisiteMode        string // Notebrew.MultisiteMode
-		sitePrefix           string // sitePrefix argument
-		filePath             string // request file_path param
-		folderPath           string // request folder_path param
-		fileName             string // request file_name param
-		wantLocation         string // response Location header (without the raw query after the "?")
-		requestData          Data
-		responseData         Data
-		wantErrors           []string
-		wantFilePathErrors   []string
-		wantFolderPathErrors []string
-		wantFileNameErrors   []string
+		description   string  // test description
+		testFS        *TestFS // Notebrew.FS
+		multisiteMode string  // Notebrew.MultisiteMode
+		sitePrefix    string  // sitePrefix argument
+		filePath      string  // request file_path param
+		folderPath    string  // request folder_path param
+		fileName      string  // request file_name param
+		wantLocation  string  // response Location header (without the raw query after the "?")
+		requestData   Data
+		responseData  Data
 	}
 
 	tests := []TestTable{{
 		description: "missing arguments",
-		wantErrors:  []string{"missing arguments"},
+		testFS:      &TestFS{fstest.MapFS{}},
+		requestData: Data{},
+		responseData: Data{
+			Errors: []string{"missing arguments"},
+		},
 	}, {
 		description: "name validation error",
-		fsys:        TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{fstest.MapFS{}},
 		requestData: Data{
 			FilePath:   "/FOO///BAR/baz#$%&.md",
 			FolderPath: "/FOO///BAR/",
@@ -352,10 +352,12 @@ func Test_POST_create(t *testing.T) {
 		},
 	}, {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
-		fsys:        TestFS{fstest.MapFS{}},
-		filePath:    "foo/bar/baz.md",
-		folderPath:  "foo/bar",
-		fileName:    "baz.md",
+		testFS:      &TestFS{fstest.MapFS{}},
+		requestData: Data{
+			FilePath:   "foo/bar/baz.md",
+			FolderPath: "foo/bar",
+			FileName:   "baz.md",
+		},
 		responseData: Data{
 			FilePath: "foo/bar/baz.md",
 			FilePathErrors: []string{
@@ -369,174 +371,362 @@ func Test_POST_create(t *testing.T) {
 		},
 	}, {
 		description: "post path cannot be created",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "posts/foo/bar/baz.md",
-		folderPath: "posts/foo/bar",
-		fileName:   "baz.md",
-		wantFilePathErrors: []string{
-			"cannot create a file here",
+		requestData: Data{
+			FilePath:   "posts/foo/bar/baz.md",
+			FolderPath: "posts/foo/bar",
+			FileName:   "baz.md",
 		},
-		wantFolderPathErrors: []string{
-			"cannot create a file here",
+		responseData: Data{
+			FilePath: "posts/foo/bar/baz.md",
+			FilePathErrors: []string{
+				"cannot create a file here",
+			},
+			FolderPath: "posts/foo/bar",
+			FolderPathErrors: []string{
+				"cannot create a file here",
+			},
+			FileName: "baz.md",
 		},
 	}, {
 		description: "note path cannot be created",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "notes/foo/bar/baz.md",
-		folderPath: "notes/foo/bar",
-		fileName:   "baz.md",
-		wantFilePathErrors: []string{
-			"cannot create a file here",
+		requestData: Data{
+			FilePath:   "notes/foo/bar/baz.md",
+			FolderPath: "notes/foo/bar",
+			FileName:   "baz.md",
 		},
-		wantFolderPathErrors: []string{
-			"cannot create a file here",
+		responseData: Data{
+			FilePath: "notes/foo/bar/baz.md",
+			FilePathErrors: []string{
+				"cannot create a file here",
+			},
+			FolderPath: "notes/foo/bar",
+			FolderPathErrors: []string{
+				"cannot create a file here",
+			},
+			FileName: "baz.md",
 		},
 	}, {
 		description: "post filename doesnt end in .md",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"posts": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "posts/baz.sh",
-		folderPath: "posts",
-		fileName:   "baz.sh",
-		wantFilePathErrors: []string{
-			"invalid extension (must end in .md)",
+		requestData: Data{
+			FilePath:   "posts/baz.sh",
+			FolderPath: "posts",
+			FileName:   "baz.sh",
 		},
-		wantFolderPathErrors: []string{
-			"invalid extension (must end in .md)",
+		responseData: Data{
+			FilePath: "posts/baz.sh",
+			FilePathErrors: []string{
+				"invalid extension (must end in .md)",
+			},
+			FolderPath: "posts",
+			FileName:   "baz.sh",
+			FileNameErrors: []string{
+				"invalid extension (must end in .md)",
+			},
 		},
 	}, {
 		description: "note filename doesnt end in .md",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"notes": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "notes/baz.sh",
-		folderPath: "notes",
-		fileName:   "baz.sh",
-		wantFilePathErrors: []string{
-			"invalid extension (must end in .md)",
+		requestData: Data{
+			FilePath:   "notes/baz.sh",
+			FolderPath: "notes",
+			FileName:   "baz.sh",
 		},
-		wantFolderPathErrors: []string{
-			"invalid extension (must end in .md)",
+		responseData: Data{
+			FilePath: "notes/baz.sh",
+			FilePathErrors: []string{
+				"invalid extension (must end in .md)",
+			},
+			FolderPath: "notes",
+			FileName:   "baz.sh",
+			FileNameErrors: []string{
+				"invalid extension (must end in .md)",
+			},
 		},
 	}, {
 		description: "page filename doesnt end in .html",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "pages/foo/bar/baz.sh",
-		folderPath: "pages/foo/bar",
-		fileName:   "baz.sh",
-		wantFilePathErrors: []string{
-			"invalid extension (must end in .html)",
+		requestData: Data{
+			FilePath:   "pages/foo/bar/baz.sh",
+			FolderPath: "pages/foo/bar",
+			FileName:   "baz.sh",
 		},
-		wantFolderPathErrors: []string{
-			"invalid extension (must end in .html)",
+		responseData: Data{
+			FilePath: "pages/foo/bar/baz.sh",
+			FilePathErrors: []string{
+				"invalid extension (must end in .html)",
+			},
+			FolderPath: "pages/foo/bar",
+			FileName:   "baz.sh",
+			FileNameErrors: []string{
+				"invalid extension (must end in .html)",
+			},
 		},
 	}, {
 		description: "template filename doesnt end in .html",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "templates/foo/bar/baz.sh",
-		folderPath: "templates/foo/bar",
-		fileName:   "baz.sh",
-		wantFilePathErrors: []string{
-			"invalid extension (must end in .html)",
+		requestData: Data{
+			FilePath:   "templates/foo/bar/baz.sh",
+			FolderPath: "templates/foo/bar",
+			FileName:   "baz.sh",
 		},
-		wantFolderPathErrors: []string{
-			"invalid extension (must end in .html)",
+		responseData: Data{
+			FilePath: "templates/foo/bar/baz.sh",
+			FilePathErrors: []string{
+				"invalid extension (must end in .html)",
+			},
+			FolderPath: "templates/foo/bar",
+			FileName:   "baz.sh",
+			FileNameErrors: []string{
+				"invalid extension (must end in .html)",
+			},
 		},
 	}, {
 		description: "asset filename doesnt have valid extension",
-		fsys: TestFS{fstest.MapFS{
+		testFS: &TestFS{fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		filePath:   "assets/foo/bar/baz.sh",
-		folderPath: "assets/foo/bar",
-		fileName:   "baz.sh",
-		wantFilePathErrors: []string{
-			"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
+		requestData: Data{
+			FilePath:   "assets/foo/bar/baz.sh",
+			FolderPath: "assets/foo/bar",
+			FileName:   "baz.sh",
 		},
-		wantFolderPathErrors: []string{
-			"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
+		responseData: Data{
+			FilePath: "assets/foo/bar/baz.sh",
+			FilePathErrors: []string{
+				"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
+			},
+			FolderPath: "assets/foo/bar",
+			FileName:   "baz.sh",
+			FileNameErrors: []string{
+				"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
+			},
 		},
 	}}
 
 	for _, tt := range tests {
 		tt := tt
-		t.Run(tt.description, func(t *testing.T) {
-			t.Run("json, file_path", func(t *testing.T) {
-				t.Parallel()
-				nbrew := &Notebrew{
-					FS:            tt.fsys,
-					DB:            newDatabase(t),
-					Dialect:       sq.DialectSQLite,
-					Scheme:        "https://",
-					AdminDomain:   "notebrew.com",
-					ContentDomain: "notebrew.blog",
-					MultisiteMode: "subdomain",
-				}
-				data := make(map[string]any)
-				if tt.filePath != "" {
-					data["file_path"] = tt.filePath
-				}
-				requestBody, err := json.Marshal(data)
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				r, err := http.NewRequest("POST", "", bytes.NewReader(requestBody))
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				r.Header = http.Header{
-					"Content-Type": []string{"application/json"},
-					"Accept":       []string{"application/json"},
-				}
-				w := httptest.NewRecorder()
-				nbrew.create(w, r, "")
-				response := w.Result()
-				gotResponseBody := w.Body.String()
-				if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
-					t.Fatal(testutil.Callers(), diff, gotResponseBody)
-				}
-				wantData := make(map[string]any)
-				if len(tt.wantErrors) > 0 {
-					wantData["errors"] = tt.wantErrors
-				}
-				if tt.filePath != "" {
-					wantData["file_path"] = tt.filePath
-				}
-				if len(tt.wantFilePathErrors) > 0 {
-					wantData["file_path_errors"] = tt.wantFilePathErrors
-				}
-				b, err := json.Marshal(wantData)
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				wantResponseBody := string(b)
-				if diff := testutil.Diff(gotResponseBody, wantResponseBody); diff != "" {
-					t.Error(testutil.Callers(), diff)
-				}
+		t.Run(tt.description+" (json) (file_path)", func(t *testing.T) {
+			t.Parallel()
+			nbrew := &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			b, err := json.Marshal(Data{
+				FilePath: tt.requestData.FilePath,
 			})
-			t.Run("html form, folder_path and file_name", func(t *testing.T) {
-				t.Skip()
-				t.Parallel()
-				nbrew := &Notebrew{
-					FS:            tt.fsys,
-					DB:            newDatabase(t),
-					Dialect:       sq.DialectSQLite,
-					Scheme:        "https://",
-					AdminDomain:   "notebrew.com",
-					ContentDomain: "notebrew.blog",
-					MultisiteMode: "subdomain",
-				}
-				_ = nbrew
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r, err := http.NewRequest("POST", "", bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/json"},
+				"Accept":       []string{"application/json"},
+			}
+			w := httptest.NewRecorder()
+			nbrew.create(w, r, "")
+			response := w.Result()
+			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			var gotResponseData Data
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponseData)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			wantResponseData := Data{
+				Errors:         tt.responseData.Errors,
+				FilePath:       tt.responseData.FilePath,
+				FilePathErrors: tt.responseData.FilePathErrors,
+			}
+			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+				t.Error(testutil.Callers(), diff)
+			}
+		})
+		t.Run(tt.description+" (json) (folder_path and file_path)", func(t *testing.T) {
+			t.Parallel()
+			nbrew := &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			b, err := json.Marshal(Data{
+				FolderPath: tt.requestData.FolderPath,
+				FileName:   tt.requestData.FileName,
 			})
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r, err := http.NewRequest("POST", "", bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/json"},
+				"Accept":       []string{"application/json"},
+			}
+			w := httptest.NewRecorder()
+			nbrew.create(w, r, "")
+			response := w.Result()
+			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			var gotResponseData Data
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponseData)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			wantResponseData := Data{
+				Errors:           tt.responseData.Errors,
+				FolderPath:       tt.responseData.FolderPath,
+				FolderPathErrors: tt.responseData.FolderPathErrors,
+				FileName:         tt.responseData.FileName,
+				FileNameErrors:   tt.responseData.FileNameErrors,
+			}
+			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+				t.Error(testutil.Callers(), diff)
+			}
+		})
+		t.Run(tt.description+" (html form) (file_path)", func(t *testing.T) {
+			t.Parallel()
+			nbrew := &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			values := url.Values{
+				"file_path": []string{tt.requestData.FilePath},
+			}
+			r, err := http.NewRequest("POST", "", strings.NewReader(values.Encode()))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/x-www-form-urlencoded"},
+				"Accept":       []string{"text/html"},
+			}
+			w := httptest.NewRecorder()
+			nbrew.create(w, r, "")
+			response := w.Result()
+			if tt.wantLocation != "" {
+				if diff := testutil.Diff(response.StatusCode, http.StatusFound); diff != "" {
+					t.Fatal(testutil.Callers(), diff, w.Body.String())
+				}
+				// TODO: make sure the Location header matches tt.wantLocation.
+				// TODO: assert that the linked file exists in the filesystem.
+				return
+			}
+			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			itemprops, err := getItemprops(w.Body.String())
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			gotResponseData := Data{
+				FilePath:         itemprops.Get("file_path"),
+				FilePathErrors:   itemprops["file_path_errors"],
+				FolderPath:       itemprops.Get("folder_path"),
+				FolderPathErrors: itemprops["folder_path_errors"],
+				FileName:         itemprops.Get("file_name"),
+				FileNameErrors:   itemprops["file_name_errors"],
+			}
+			wantResponseData := Data{
+				FilePath:       tt.responseData.FilePath,
+				FilePathErrors: tt.responseData.FilePathErrors,
+			}
+			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+				t.Error(testutil.Callers(), diff)
+			}
+		})
+		t.Run(tt.description+" (html form) (folder_path and file_path)", func(t *testing.T) {
+			t.Parallel()
+			nbrew := &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			values := url.Values{
+				"folder_path": []string{tt.requestData.FolderPath},
+				"file_name":   []string{tt.requestData.FileName},
+			}
+			r, err := http.NewRequest("POST", "", strings.NewReader(values.Encode()))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/x-www-form-urlencoded"},
+				"Accept":       []string{"text/html"},
+			}
+			w := httptest.NewRecorder()
+			nbrew.create(w, r, "")
+			response := w.Result()
+			if tt.wantLocation != "" {
+				if diff := testutil.Diff(response.StatusCode, http.StatusFound); diff != "" {
+					t.Fatal(testutil.Callers(), diff, w.Body.String())
+				}
+				// TODO: make sure the Location header matches tt.wantLocation.
+				// TODO: assert that the linked file exists in the filesystem.
+				return
+			}
+			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			itemprops, err := getItemprops(w.Body.String())
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			gotResponseData := Data{
+				FilePath:         itemprops.Get("file_path"),
+				FilePathErrors:   itemprops["file_path_errors"],
+				FolderPath:       itemprops.Get("folder_path"),
+				FolderPathErrors: itemprops["folder_path_errors"],
+				FileName:         itemprops.Get("file_name"),
+				FileNameErrors:   itemprops["file_name_errors"],
+			}
+			wantResponseData := Data{
+				FolderPath:       tt.responseData.FolderPath,
+				FolderPathErrors: tt.responseData.FolderPathErrors,
+				FileName:         tt.responseData.FileName,
+				FileNameErrors:   tt.responseData.FileNameErrors,
+			}
+			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+				t.Error(testutil.Callers(), diff)
+			}
 		})
 	}
 	// all fields empty (both Content-Type, Accept headers, multisitemode subdirectory)
@@ -564,7 +754,20 @@ type TestFS struct {
 	fstest.MapFS
 }
 
-func (fsys TestFS) OpenWriter(name string) (io.WriteCloser, error) {
+func (fsys *TestFS) Clone() *TestFS {
+	mapFS := make(fstest.MapFS)
+	for name, file := range fsys.MapFS {
+		mapFS[name] = &fstest.MapFile{
+			Data:    file.Data,
+			Mode:    file.Mode,
+			ModTime: file.ModTime,
+			Sys:     file.Sys,
+		}
+	}
+	return &TestFS{mapFS}
+}
+
+func (fsys *TestFS) OpenWriter(name string) (io.WriteCloser, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
@@ -576,7 +779,7 @@ func (fsys TestFS) OpenWriter(name string) (io.WriteCloser, error) {
 	return testFile, nil
 }
 
-func (fsys TestFS) MkdirAll(path string, perm fs.FileMode) error {
+func (fsys *TestFS) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
 	}
@@ -587,7 +790,7 @@ func (fsys TestFS) MkdirAll(path string, perm fs.FileMode) error {
 	return nil
 }
 
-func (fsys TestFS) RemoveAll(path string) error {
+func (fsys *TestFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrInvalid}
 	}
@@ -601,7 +804,7 @@ func (fsys TestFS) RemoveAll(path string) error {
 	return nil
 }
 
-func (fsys TestFS) Move(oldpath, newpath string) error {
+func (fsys *TestFS) Move(oldpath, newpath string) error {
 	if !fs.ValidPath(oldpath) {
 		return &fs.PathError{Op: "move", Path: oldpath, Err: fs.ErrInvalid}
 	}
@@ -802,4 +1005,16 @@ func getItemprops(body string) (url.Values, error) {
 		nodes = append(nodes, node.NextSibling, node.FirstChild)
 	}
 	return itemprops, nil
+}
+
+func cloneMap[M ~map[K]V, K comparable, V any](m M) M {
+	// Preserve nil in case it matters.
+	if m == nil {
+		return nil
+	}
+	r := make(M, len(m))
+	for k, v := range m {
+		r[k] = v
+	}
+	return r
 }
