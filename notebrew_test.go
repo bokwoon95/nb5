@@ -651,6 +651,10 @@ func Test_POST_create(t *testing.T) {
 				// TODO: assert that the linked file exists in the filesystem.
 				return
 			}
+			// TODO: we never actually get http.StatusOK, even in the case of
+			// an error we are redirected back to an empty url so we have to
+			// assert that a session token was set instead and that session
+			// should be the response we are looking for.
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
@@ -708,6 +712,10 @@ func Test_POST_create(t *testing.T) {
 				// TODO: assert that the linked file exists in the filesystem.
 				return
 			}
+			// TODO: we never actually get http.StatusOK, even in the case of
+			// an error we are redirected back to an empty url so we have to
+			// assert that a session token was set instead and that session
+			// should be the response we are looking for.
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
@@ -742,6 +750,7 @@ func Test_POST_create(t *testing.T) {
 	// page | template filename doesn't end in .html (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// asset filename doesn't have valid extension (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// parent folder doesn't exist (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
+	// file being created already exists (we need to add a new field to Response in order to handle this error on the front end, need to render an error string that contains the link to the already existing resource)
 	// Using os.DirFS instead of TestFS causing ErrUnwritable (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 }
 

@@ -601,13 +601,14 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		FileName   string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		Errors           []string `json:"errors,omitempty"`
-		FilePath         string   `json:"file_path,omitempty"`
-		FilePathErrors   []string `json:"file_path_errors,omitempty"`
-		FolderPath       string   `json:"folder_path,omitempty"`
-		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
-		FileName         string   `json:"file_name,omitempty"`
-		FileNameErrors   []string `json:"file_name_errors,omitempty"`
+		Errors                []string `json:"errors,omitempty"`
+		ResourceAlreadyExists string   `json:"resource_already_exists,omitempty"`
+		FilePath              string   `json:"file_path,omitempty"`
+		FilePathErrors        []string `json:"file_path_errors,omitempty"`
+		FolderPath            string   `json:"folder_path,omitempty"`
+		FolderPathErrors      []string `json:"folder_path_errors,omitempty"`
+		FileName              string   `json:"file_name,omitempty"`
+		FileNameErrors        []string `json:"file_name_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -847,6 +848,22 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				response.FilePathErrors = append(response.FilePathErrors, errmsg)
 			} else {
 				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+			}
+			writeResponse(w, r, response)
+			return
+		}
+
+		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, filePath))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			response.Errors = append(response.Errors, err.Error())
+			writeResponse(w, r, response)
+			return
+		}
+		if err == nil {
+			if nbrew.MultisiteMode == "subdirectory" {
+				response.ResourceAlreadyExists = "/" + path.Join(sitePrefix, "admin", filePath)
+			} else {
+				response.ResourceAlreadyExists = "/" + path.Join("admin", filePath)
 			}
 			writeResponse(w, r, response)
 			return
