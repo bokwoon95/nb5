@@ -3,7 +3,9 @@ package nb5
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -25,7 +27,9 @@ import (
 	"github.com/bokwoon95/sq"
 	"github.com/bokwoon95/sqddl/ddl"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/blake2b"
 	"golang.org/x/exp/slog"
+	"golang.org/x/net/html"
 )
 
 func Test_validateName(t *testing.T) {
@@ -159,6 +163,11 @@ func Test_create_GET(t *testing.T) {
 		wantPageValues url.Values       // values extracted from parsing response html microdata
 	}
 
+	var (
+		sessionToken     = newToken(time.Now())
+		sessionTokenHash = hashToken(sessionToken)
+	)
+
 	tests := []TestTable{{
 		description: "basic",
 		wantPageValues: url.Values{
@@ -187,7 +196,7 @@ func Test_create_GET(t *testing.T) {
 		seedQueries: []sq.CustomQuery{{
 			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
 			Values: []any{
-				unhex("000000004af9f070ee49566e923f7969f9c60004067f07fd724a4b8e9391d388a57d611b2e480dec"),
+				sessionTokenHash,
 				sq.JSONValue(map[string]any{
 					"folder_path": "/FOO///BAR/",
 					"folder_path_errors": []string{
@@ -204,7 +213,7 @@ func Test_create_GET(t *testing.T) {
 			},
 		}},
 		header: http.Header{
-			"Cookie": []string{"flash_session=4af9f0705f8a0d5362275996f0354366351bf19e"},
+			"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken), "0")},
 		},
 		wantPageValues: url.Values{
 			"folder_path": []string{"/FOO///BAR/"},
@@ -255,6 +264,20 @@ func Test_create_GET(t *testing.T) {
 			response := w.Result()
 			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			root, err := html.Parse(w.Body)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			var node *html.Node
+			nodes := []*html.Node{root}
+			// gotPageValues := make(url.Values)
+			for len(nodes) > 0 {
+				node, nodes = nodes[len(nodes)-1], nodes[:len(nodes)-1]
+				if node == nil {
+					continue
+				}
+				nodes = append(nodes, node.NextSibling, node.FirstChild)
 			}
 		})
 	}
@@ -452,4 +475,22 @@ func unhex(s string) []byte {
 		panic(err)
 	}
 	return b
+}
+
+func newToken(tm time.Time) []byte {
+	token := make([]byte, 8+16)
+	binary.BigEndian.PutUint64(token[:8], uint64(tm.Unix()))
+	_, err := rand.Read(token[8:])
+	if err != nil {
+		panic(err)
+	}
+	return token[:]
+}
+
+func hashToken(token []byte) []byte {
+	tokenHash := make([]byte, 8+blake2b.Size256)
+	checksum := blake2b.Sum256([]byte(token[8:]))
+	copy(tokenHash[:8], token[:8])
+	copy(tokenHash[8:], checksum[:])
+	return tokenHash
 }
