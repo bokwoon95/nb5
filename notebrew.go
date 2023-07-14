@@ -629,15 +629,14 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 		var response Response
-		if len(r.Form) > 0 {
+		ok, err := nbrew.getSession(r, "flash_session", &response)
+		if err != nil {
+			logger.Error(err.Error())
+		}
+		if !ok {
 			response.FolderPath = r.Form.Get("folder_path")
 			response.FileName = r.Form.Get("file_name")
 			response.FilePath = r.Form.Get("file_path")
-		} else {
-			_, err := nbrew.getSession(r, "flash_session", &response)
-			if err != nil {
-				logger.Error(err.Error())
-			}
 		}
 		nbrew.clearSession(w, r, "flash_session")
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
@@ -685,9 +684,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 					return
 				}
-				redirectURL := *r.URL
-				redirectURL.RawQuery = ""
-				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+				http.Redirect(w, r, r.URL.String(), http.StatusFound)
 				return
 			}
 			filePath := response.FilePath
@@ -738,9 +735,11 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		// filePathProvidedByUser tracks whether the user provided file_path or
 		// folder_path and file_name.
 		var filePathProvidedByUser bool
+
 		// filePath is the path of the file to create, obtained from either
 		// file_path or path.Join(folder_path, file_name).
 		var filePath string
+
 		var response Response
 		if request.FilePath != "" {
 			filePathProvidedByUser = true
