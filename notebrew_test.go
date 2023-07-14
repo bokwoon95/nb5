@@ -161,7 +161,7 @@ func Test_create_GET(t *testing.T) {
 		seedQueries   []sq.CustomQuery // queries to seed database with
 		header        http.Header      // request header
 		rawQuery      string           // request GET query parameters
-		wantItemprops url.Values       // values extracted from parsing response html microdata
+		wantItemprops url.Values       // itemprops extracted from parsing response html microdata
 	}
 
 	var (
