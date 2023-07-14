@@ -9,7 +9,7 @@
     {{- if .Errors }}
     <ul>
         {{- range $error := .Errors }}
-        <li itemprop="errors">{{ $error }}
+        <li itemprop="errors">{{ $error }}</li>
         {{- end }}
     </ul>
     {{- end }}
@@ -20,7 +20,7 @@
         {{- if .FolderPathErrors }}
         <ul>
             {{- range $error := .FolderPathErrors }}
-            <li itemprop="folder_path_errors">{{ $error }}
+            <li itemprop="folder_path_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
@@ -32,7 +32,7 @@
         {{- if .FileNameErrors }}
         <ul>
             {{- range $error := .FileNameErrors }}
-            <li itemprop="file_name_errors">{{ $error }}
+            <li itemprop="file_name_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
@@ -45,7 +45,7 @@
         {{- if .FilePathErrors }}
         <ul>
             {{- range $error := .FilePathErrors }}
-            <li itemprop="file_path_errors">{{ $error }}
+            <li itemprop="file_path_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
