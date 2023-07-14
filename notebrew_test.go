@@ -34,6 +34,10 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
+func init() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true})))
+}
+
 func Test_validateName(t *testing.T) {
 	type TestTable struct {
 		description string
@@ -264,9 +268,7 @@ func Test_GET_create(t *testing.T) {
 					t.Fatal(testutil.Callers(), err)
 				}
 			}
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true}))
-			ctx := context.WithValue(context.Background(), loggerKey, logger)
-			r, err := http.NewRequestWithContext(ctx, "GET", "", nil)
+			r, err := http.NewRequest("GET", "", nil)
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
@@ -314,11 +316,12 @@ func Test_POST_create(t *testing.T) {
 		fsys                 fs.FS  // Notebrew.FS
 		multisiteMode        string // Notebrew.MultisiteMode
 		sitePrefix           string // sitePrefix argument
+		filePath             string // request file_path param
 		folderPath           string // request folder_path param
 		fileName             string // request file_name param
-		wantStatusCode       int    // response status code
 		wantLocation         string // response Location header (without the raw query after the "?")
 		wantErrors           []string
+		wantFilePathErrors   []string
 		wantFolderPathErrors []string
 		wantFileNameErrors   []string
 	}
@@ -329,8 +332,15 @@ func Test_POST_create(t *testing.T) {
 	}, {
 		description: "name validation error",
 		fsys:        TestFS{fstest.MapFS{}},
+		filePath:    "/FOO///BAR/baz#$%&.md",
 		folderPath:  "/FOO///BAR/",
 		fileName:    "baz#$%&.md",
+		wantFilePathErrors: []string{
+			"cannot have leading slash",
+			"cannot have multiple slashes next to each other",
+			"no uppercase letters [A-Z] allowed",
+			"forbidden characters: #$%&",
+		},
 		wantFolderPathErrors: []string{
 			"cannot have leading slash",
 			"cannot have trailing slash",
@@ -343,8 +353,12 @@ func Test_POST_create(t *testing.T) {
 	}, {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
 		fsys:        TestFS{fstest.MapFS{}},
+		filePath:    "foo/bar/baz.md",
 		folderPath:  "foo/bar",
 		fileName:    "baz.md",
+		wantFilePathErrors: []string{
+			"path has to start with posts, notes, pages, templates or assets",
+		},
 		wantFolderPathErrors: []string{
 			"path has to start with posts, notes, pages, templates or assets",
 		},
@@ -353,8 +367,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "posts/foo/bar/baz.md",
 		folderPath: "posts/foo/bar",
 		fileName:   "baz.md",
+		wantFilePathErrors: []string{
+			"cannot create a file here",
+		},
 		wantFolderPathErrors: []string{
 			"cannot create a file here",
 		},
@@ -363,8 +381,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "notes/foo/bar/baz.md",
 		folderPath: "notes/foo/bar",
 		fileName:   "baz.md",
+		wantFilePathErrors: []string{
+			"cannot create a file here",
+		},
 		wantFolderPathErrors: []string{
 			"cannot create a file here",
 		},
@@ -373,8 +395,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"posts": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "posts/baz.sh",
 		folderPath: "posts",
 		fileName:   "baz.sh",
+		wantFilePathErrors: []string{
+			"invalid extension (must end in .md)",
+		},
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .md)",
 		},
@@ -383,8 +409,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"notes": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "notes/baz.sh",
 		folderPath: "notes",
 		fileName:   "baz.sh",
+		wantFilePathErrors: []string{
+			"invalid extension (must end in .md)",
+		},
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .md)",
 		},
@@ -393,8 +423,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "pages/foo/bar/baz.sh",
 		folderPath: "pages/foo/bar",
 		fileName:   "baz.sh",
+		wantFilePathErrors: []string{
+			"invalid extension (must end in .html)",
+		},
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .html)",
 		},
@@ -403,8 +437,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "templates/foo/bar/baz.sh",
 		folderPath: "templates/foo/bar",
 		fileName:   "baz.sh",
+		wantFilePathErrors: []string{
+			"invalid extension (must end in .html)",
+		},
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .html)",
 		},
@@ -413,8 +451,12 @@ func Test_POST_create(t *testing.T) {
 		fsys: TestFS{fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		filePath:   "assets/foo/bar/baz.sh",
 		folderPath: "assets/foo/bar",
 		fileName:   "baz.sh",
+		wantFilePathErrors: []string{
+			"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
+		},
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 		},
@@ -438,14 +480,15 @@ func Test_POST_create(t *testing.T) {
 					AddSource: true,
 				}))
 				ctx := context.WithValue(context.Background(), loggerKey, logger)
-				filePath := path.Join(tt.folderPath, tt.fileName)
-				b, err := json.Marshal(map[string]any{
-					"file_path": filePath,
-				})
+				data := make(map[string]any)
+				if tt.filePath != "" {
+					data["file_path"] = tt.filePath
+				}
+				requestBody, err := json.Marshal(data)
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
-				r, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(b))
+				r, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(requestBody))
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
@@ -456,7 +499,28 @@ func Test_POST_create(t *testing.T) {
 				w := httptest.NewRecorder()
 				nbrew.create(w, r, "")
 				response := w.Result()
-				fmt.Println(response)
+				gotResponseBody := w.Body.String()
+				if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+					t.Fatal(testutil.Callers(), diff, gotResponseBody)
+				}
+				wantData := make(map[string]any)
+				if len(tt.wantErrors) > 0 {
+					wantData["errors"] = tt.wantErrors
+				}
+				if tt.filePath != "" {
+					wantData["file_path"] = tt.filePath
+				}
+				if len(tt.wantFilePathErrors) > 0 {
+					wantData["file_path_errors"] = tt.wantFilePathErrors
+				}
+				b, err := json.Marshal(wantData)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				wantResponseBody := string(b)
+				if diff := testutil.Diff(gotResponseBody, wantResponseBody); diff != "" {
+					t.Error(testutil.Callers(), diff)
+				}
 			})
 			t.Run("html form, folder_path and file_name", func(t *testing.T) {
 				t.Skip()
