@@ -221,7 +221,7 @@ func Test_create_GET(t *testing.T) {
 			},
 			"file_name": []string{"baz#$%&.md"},
 			"file_name_errors": []string{
-				"forbidden characters: #$%&amp;",
+				"forbidden characters: #$%&",
 			},
 		},
 	}}
@@ -262,59 +262,9 @@ func Test_create_GET(t *testing.T) {
 			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, body)
 			}
-			root, err := html.Parse(strings.NewReader(body))
+			gotItemprops, err := getItemprops(body)
 			if err != nil {
 				t.Fatal(testutil.Callers(), err, body)
-			}
-			var node *html.Node
-			nodes := []*html.Node{root}
-			gotItemprops := make(url.Values)
-			for len(nodes) > 0 {
-				node, nodes = nodes[len(nodes)-1], nodes[:len(nodes)-1]
-				if node == nil {
-					continue
-				}
-				hasItemprop := false
-				var itempropKey, itempropValue string
-				for _, attr := range node.Attr {
-					if attr.Key == "itemprop" {
-						hasItemprop = true
-						itempropKey = attr.Val
-						break
-					}
-				}
-				if hasItemprop {
-					switch node.DataAtom {
-					case atom.A:
-						for _, attr := range node.Attr {
-							if attr.Key == "href" {
-								itempropValue = attr.Val
-							}
-						}
-					case atom.Img:
-						for _, attr := range node.Attr {
-							if attr.Key == "src" {
-								itempropValue = attr.Val
-							}
-						}
-					case atom.Input:
-						for _, attr := range node.Attr {
-							if attr.Key == "value" {
-								itempropValue = attr.Val
-							}
-						}
-					default:
-						var innerHTML strings.Builder
-						child := node.FirstChild
-						for child != nil {
-							html.Render(&innerHTML, child)
-							child = child.NextSibling
-						}
-						itempropValue = innerHTML.String()
-					}
-					gotItemprops.Add(itempropKey, strings.TrimSpace(itempropValue))
-				}
-				nodes = append(nodes, node.NextSibling, node.FirstChild)
 			}
 			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
 				t.Error(testutil.Callers(), diff, body)
@@ -535,10 +485,10 @@ func hashToken(token []byte) []byte {
 	return tokenHash
 }
 
-func getItemprops(t *testing.T, body string) url.Values {
+func getItemprops(body string) (url.Values, error) {
 	root, err := html.Parse(strings.NewReader(body))
 	if err != nil {
-		t.Fatal(testutil.Callers(), err, body)
+		return nil, err
 	}
 	var node *html.Node
 	nodes := []*html.Node{root}
@@ -580,12 +530,12 @@ func getItemprops(t *testing.T, body string) url.Values {
 				var childNode *html.Node
 				childNodes := []*html.Node{node.FirstChild}
 				for len(childNodes) > 0 {
-					childNode, childNodes = childNodes[len(nodes)-1], childNodes[:len(nodes)-1]
+					childNode, childNodes = childNodes[len(childNodes)-1], childNodes[:len(childNodes)-1]
 					if childNode == nil {
 						continue
 					}
 					if childNode.Type == html.TextNode {
-						textContent.WriteString(childNode.Data) // TODO: unescape string?
+						textContent.WriteString(childNode.Data)
 					}
 					childNodes = append(childNodes, childNode.NextSibling, childNode.FirstChild)
 				}
@@ -595,5 +545,5 @@ func getItemprops(t *testing.T, body string) url.Values {
 		}
 		nodes = append(nodes, node.NextSibling, node.FirstChild)
 	}
-	return itemprops
+	return itemprops, nil
 }
