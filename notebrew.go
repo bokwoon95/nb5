@@ -479,33 +479,54 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return b.String(), nil
 }
 
+var uppercaseCharSet = map[rune]struct{}{
+	'A': {}, 'B': {}, 'C': {}, 'D': {}, 'E': {}, 'F': {}, 'G': {}, 'H': {}, 'I': {},
+	'J': {}, 'K': {}, 'L': {}, 'M': {}, 'N': {}, 'O': {}, 'P': {}, 'Q': {}, 'R': {},
+	'S': {}, 'T': {}, 'U': {}, 'V': {}, 'W': {}, 'X': {}, 'Y': {}, 'Z': {},
+}
+
+var forbiddenCharSet = map[rune]struct{}{
+	' ': {}, '!': {}, '"': {}, '#': {}, '$': {}, '%': {}, '&': {}, '\'': {},
+	'(': {}, ')': {}, '*': {}, '+': {}, ',': {}, '/': {}, ':': {}, ';': {},
+	'<': {}, '>': {}, '=': {}, '?': {}, '[': {}, ']': {}, '\\': {}, '^': {},
+	'`': {}, '{': {}, '}': {}, '|': {}, '~': {},
+}
+
+var forbiddenNameSet = map[string]struct{}{
+	"con": {}, "prn": {}, "aux": {}, "nul": {}, "com1": {}, "com2": {},
+	"com3": {}, "com4": {}, "com5": {}, "com6": {}, "com7": {}, "com8": {},
+	"com9": {}, "lpt1": {}, "lpt2": {}, "lpt3": {}, "lpt4": {}, "lpt5": {},
+	"lpt6": {}, "lpt7": {}, "lpt8": {}, "lpt9": {},
+}
+
 func validateName(name string) (errmsgs []string) {
 	if name == "" {
 		return []string{"cannot be empty"}
 	}
-	if strings.ContainsAny(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+	var forbiddenChars strings.Builder
+	hasUppercaseChar := false
+	writtenChar := make(map[rune]struct{})
+	for _, char := range name {
+		if _, ok := uppercaseCharSet[char]; ok {
+			hasUppercaseChar = true
+		}
+		if _, ok := forbiddenCharSet[char]; ok {
+			if _, ok := writtenChar[char]; !ok {
+				writtenChar[char] = struct{}{}
+				forbiddenChars.WriteRune(char)
+			}
+		}
+	}
+	if hasUppercaseChar {
 		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
 	}
-	const forbiddenChars = " !\";#$%&'()*+,/:;<>=?[]\\^`{}|~"
-	var b strings.Builder
-	str := name
-	written := make(map[byte]struct{})
-	for i := strings.IndexAny(str, forbiddenChars); i >= 0; i = strings.IndexAny(str, forbiddenChars) {
-		char := str[i]
-		if _, ok := written[char]; !ok {
-			written[char] = struct{}{}
-			b.WriteByte(char)
-		}
-		str = str[i+1:]
+	if forbiddenChars.Len() > 0 {
+		errmsgs = append(errmsgs, "forbidden characters: "+forbiddenChars.String())
 	}
-	if b.Len() > 0 {
-		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
+	if len(name) > 0 && name[len(name)-1] == '.' {
+		errmsgs = append(errmsgs, "cannot end in dot")
 	}
-	switch strings.ToLower(name) {
-	// Windows forbidden file names.
-	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
-		"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
-		"lpt6", "lpt7", "lpt8", "lpt9":
+	if _, ok := forbiddenNameSet[strings.ToLower(name)]; ok {
 		errmsgs = append(errmsgs, "forbidden name")
 	}
 	return errmsgs
@@ -524,37 +545,47 @@ func validatePath(path string) (errmsgs []string) {
 	if strings.Contains(path, "//") {
 		errmsgs = append(errmsgs, "cannot have multiple slashes next to each other")
 	}
-	if strings.ContainsAny(path, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+	var forbiddenChars strings.Builder
+	var forbiddenNames []string
+	hasUppercaseChar := false
+	hasDotSuffixError := false
+	writtenChar := make(map[rune]struct{})
+	writtenName := make(map[string]struct{})
+	name, tail, _ := strings.Cut(path, "/")
+	for name != "" || tail != "" {
+		for _, char := range name {
+			if _, ok := uppercaseCharSet[char]; ok {
+				hasUppercaseChar = true
+			}
+			if _, ok := forbiddenCharSet[char]; ok {
+				if _, ok := writtenChar[char]; !ok {
+					writtenChar[char] = struct{}{}
+					forbiddenChars.WriteRune(char)
+				}
+			}
+		}
+		if len(name) > 0 && name[len(name)-1] == '.' {
+			hasDotSuffixError = true
+		}
+		if _, ok := forbiddenNameSet[strings.ToLower(name)]; ok {
+			if _, ok := writtenName[name]; !ok {
+				writtenName[name] = struct{}{}
+				forbiddenNames = append(forbiddenNames, name)
+			}
+		}
+		name, tail, _ = strings.Cut(tail, "/")
+	}
+	if hasUppercaseChar {
 		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
 	}
-	const forbiddenChars = " !\";#$%&'()*+,:;<>=?[]\\^`{}|~"
-	var b strings.Builder
-	str := path
-	written := make(map[byte]struct{})
-	for i := strings.IndexAny(str, forbiddenChars); i >= 0; i = strings.IndexAny(str, forbiddenChars) {
-		char := str[i]
-		if _, ok := written[char]; !ok {
-			written[char] = struct{}{}
-			b.WriteByte(char)
-		}
-		str = str[i+1:]
+	if forbiddenChars.Len() > 0 {
+		errmsgs = append(errmsgs, "forbidden characters: "+forbiddenChars.String())
 	}
-	if b.Len() > 0 {
-		errmsgs = append(errmsgs, "forbidden characters: "+b.String())
+	if hasDotSuffixError {
+		errmsgs = append(errmsgs, "name cannot end in dot")
 	}
-	var names []string
-	str = path
-	for name, str, _ := strings.Cut(str, "/"); name != ""; name, str, _ = strings.Cut(str, "/") {
-		switch strings.ToLower(name) {
-		// Windows forbidden file names.
-		case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
-			"com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
-			"lpt6", "lpt7", "lpt8", "lpt9":
-			names = append(names, name)
-		}
-	}
-	if len(names) > 0 {
-		errmsgs = append(errmsgs, "forbidden name(s): "+strings.Join(names, ", "))
+	if len(forbiddenNames) > 0 {
+		errmsgs = append(errmsgs, "forbidden name(s): "+strings.Join(forbiddenNames, ", "))
 	}
 	return errmsgs
 }

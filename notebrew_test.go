@@ -69,6 +69,18 @@ func Test_validateName(t *testing.T) {
 			"forbidden name",
 		},
 	}, {
+		description: "ends in dot",
+		name:        "foo.",
+		wantErrs: []string{
+			"cannot end in dot",
+		},
+	}, {
+		description: "dot",
+		name:        ".",
+		wantErrs: []string{
+			"cannot end in dot",
+		},
+	}, {
 		description: "ok",
 		name:        "apple",
 		wantErrs:    nil,
@@ -120,6 +132,12 @@ func Test_validatePath(t *testing.T) {
 		wantErrs: []string{
 			"no uppercase letters [A-Z] allowed",
 			"forbidden name(s): COM1, cOn, lpT9",
+		},
+	}, {
+		description: "dot",
+		path:        "foo/bar/./baz",
+		wantErrs: []string{
+			"name cannot end in dot",
 		},
 	}, {
 		description: "ok",
