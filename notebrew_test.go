@@ -743,7 +743,6 @@ func Test_POST_create(t *testing.T) {
 	// asset filename doesn't have valid extension (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// parent folder doesn't exist (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// Using os.DirFS instead of TestFS causing ErrUnwritable (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// TODO: make sure that at least one of the error tests have POST urls with query parameters, making it possible to test that the query params are cleared successfully on redirect. We do not want query params to persist because it will force the errors to never show up.
 }
 
 func Test_POST_create_autogenerateID(t *testing.T) {
