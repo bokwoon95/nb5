@@ -669,7 +669,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if len(response.Errors) > 0 ||
+			if response.ResourceAlreadyExists != "" ||
+				len(response.Errors) > 0 ||
 				len(response.FilePathErrors) > 0 ||
 				len(response.FolderPathErrors) > 0 ||
 				len(response.FileNameErrors) > 0 {
@@ -855,7 +856,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 
 		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, filePath))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			response.Errors = append(response.Errors, err.Error())
+			errmsg := err.Error()
+			logger.Error(errmsg)
+			response.Errors = append(response.Errors, errmsg)
 			writeResponse(w, r, response)
 			return
 		}
