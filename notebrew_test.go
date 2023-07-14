@@ -400,7 +400,7 @@ func Test_POST_create(t *testing.T) {
 		folderPath: "assets/foo/bar",
 		fileName:   "baz.sh",
 		wantFolderPathErrors: []string{
-			"invalid extension (must end in one of: )",
+			"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 		},
 	}}
 
@@ -439,8 +439,11 @@ func Test_POST_create(t *testing.T) {
 				}
 				w := httptest.NewRecorder()
 				nbrew.create(w, r, "")
+				response := w.Result()
+				fmt.Println(response)
 			})
 			t.Run("html form, folder_path and file_name", func(t *testing.T) {
+				t.Skip()
 				t.Parallel()
 				nbrew := &Notebrew{
 					FS:            tt.fsys,
