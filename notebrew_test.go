@@ -2,17 +2,16 @@ package nb5
 
 import (
 	"bytes"
-	"crypto/rand"
 	"database/sql"
-	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -24,8 +23,15 @@ import (
 	"github.com/bokwoon95/nb5/internal/testutil"
 	"github.com/bokwoon95/sq"
 	"github.com/bokwoon95/sqddl/ddl"
-	"golang.org/x/crypto/blake2b"
+	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/exp/slog"
 )
+
+func init() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		AddSource: true,
+	})))
+}
 
 func Test_validateName(t *testing.T) {
 	type TestTable struct {
@@ -151,35 +157,22 @@ func Test_create(t *testing.T) {
 
 func Test_create_GET(t *testing.T) {
 	type TestTable struct {
-		description    string
-		notebrew       *Notebrew
-		header         http.Header
-		rawQuery       string
-		wantPageValues url.Values
-	}
-	newNotebrew := func() *Notebrew {
-		return &Notebrew{
-			FS:            TestFS{fstest.MapFS{}},
-			DB:            newDatabase(t),
-			Dialect:       sq.DialectSQLite,
-			Scheme:        "https://",
-			AdminDomain:   "notebrew.com",
-			ContentDomain: "notebrew.blog",
-			MultisiteMode: "subdomain",
-		}
+		description    string           // test description
+		seedQueries    []sq.CustomQuery // queries to seed database with
+		header         http.Header      // request header
+		rawQuery       string           // request GET query parameters
+		wantPageValues url.Values       // values extracted from parsing response html microdata
 	}
 
 	tests := []TestTable{{
 		description: "basic",
-		notebrew:    newNotebrew(),
 		wantPageValues: url.Values{
 			"file_path":   []string{""},
 			"folder_path": []string{""},
 			"file_name":   []string{""},
 		},
 	}, {
-		description: "folder_path, file_name provided",
-		notebrew:    newNotebrew(),
+		description: "folder_path and file_name provided",
 		rawQuery:    "folder_path=foo/bar&file_name=baz.md",
 		wantPageValues: url.Values{
 			"file_path":   []string{""},
@@ -188,7 +181,6 @@ func Test_create_GET(t *testing.T) {
 		},
 	}, {
 		description: "file_path provided",
-		notebrew:    newNotebrew(),
 		rawQuery:    "file_path=foo/bar/baz.md",
 		wantPageValues: url.Values{
 			"file_path":   []string{"foo/bar/baz.md"},
@@ -196,80 +188,75 @@ func Test_create_GET(t *testing.T) {
 			"file_name":   []string{""},
 		},
 	}, {
-		description: "valid session cookie",
-		notebrew:    newNotebrew(),
+		description: "session cookie",
+		seedQueries: []sq.CustomQuery{{
+			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
+			Values: []any{
+				unhex("000000004af9f070ee49566e923f7969f9c60004067f07fd724a4b8e9391d388a57d611b2e480dec"),
+				sq.JSONValue(map[string]any{
+					"folder_path": "/FOO///BAR/",
+					"folder_path_errors": []string{
+						"cannot have leading slash",
+						"cannot have trailing slash",
+						"cannot have multiple slashes next to each other",
+						"no uppercase letters [A-Z] allowed",
+					},
+					"file_name": "baz#$%&.md",
+					"file_name_errors": []string{
+						"forbidden characters: #$%&",
+					},
+				}),
+			},
+		}},
 		header: http.Header{
-			"Cookie": []string{""},
+			"Cookie": []string{"flash_session=4af9f0705f8a0d5362275996f0354366351bf19e"},
 		},
 		wantPageValues: url.Values{
-			"file_path":   []string{"aaa"},
-			"folder_path": []string{"bbb"},
-			"file_name":   []string{"ccc"},
+			"folder_path": []string{"/FOO///BAR/"},
+			"folder_path_errors": []string{
+				"cannot have leading slash",
+				"cannot have trailing slash",
+				"cannot have multiple slashes next to each other",
+				"no uppercase letters [A-Z] allowed",
+			},
+			"file_name": []string{"baz#$%&.md"},
+			"file_name_errors": []string{
+				"forbidden characters: #$%&",
+			},
 		},
-	}, func() TestTable {
-		data := map[string]any{
-			"file_path":          "foo/bar/bar.md",
-			"file_path_errors":   []string{"(panic)"},
-			"folder_path":        "foo/bar",
-			"folder_path_errors": []string{"(panic)"},
-			"file_name":          "baz.md",
-			"file_name_errors":   []string{"(panic)"},
-		}
-		dataBytes, err := json.Marshal(data)
-		if err != nil {
-			t.Fatal(testutil.Callers(), err)
-		}
-		var sessionToken [8 + 16]byte
-		binary.BigEndian.PutUint64(sessionToken[:8], uint64(time.Now().Unix()))
-		_, err = rand.Read(sessionToken[8:])
-		if err != nil {
-			t.Fatal(testutil.Callers(), err)
-		}
-		var sessionTokenHash [8 + blake2b.Size256]byte
-		checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-		copy(sessionTokenHash[:8], sessionToken[:8])
-		copy(sessionTokenHash[8:], checksum[:])
-		db := newDatabase(t)
-		_, err = sq.Exec(db, sq.CustomQuery{
-			Dialect: sq.DialectSQLite,
-			Format:  "INSERT INTO sessions (session_token_hash, payload) VALUES ({sessionTokenHash}, {payload})",
-			Values: []any{
-				sq.BytesParam("sessionTokenHash", sessionTokenHash[:]),
-				sq.BytesParam("data", dataBytes),
-			},
-		})
-		if err != nil {
-			t.Fatal(testutil.Callers(), err)
-		}
-		return TestTable{
-			description: "valid session cookie",
-			notebrew: &Notebrew{
-				FS:            TestFS{fstest.MapFS{}},
-				DB:            db,
-				Dialect:       sq.DialectSQLite,
-				Scheme:        "https://",
-				AdminDomain:   "notebrew.com",
-				ContentDomain: "notebrew.blog",
-				MultisiteMode: "subdomain",
-			},
-			header: http.Header{
-				"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken[:]), "0")},
-			},
-			wantPageValues: url.Values{
-				"file_path":          []string{"foo/bar/bar.md"},
-				"file_path_errors":   []string{"(panic)"},
-				"folder_path":        []string{"foo/bar"},
-				"folder_path_errors": []string{"(panic)"},
-				"file_name":          []string{"baz.md"},
-				"file_name_errors":   []string{"(panic)"},
-			},
-		}
-	}()}
+	}}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
+			nbrew := &Notebrew{
+				FS:            TestFS{fstest.MapFS{}},
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			for _, seedQuery := range tt.seedQueries {
+				_, err := sq.Exec(nbrew.DB, seedQuery)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+			}
+			r, err := http.NewRequest("GET", "", nil)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = tt.header
+			r.URL.RawQuery = tt.rawQuery
+			w := httptest.NewRecorder()
+			nbrew.create(w, r, "")
+			response := w.Result()
+			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
 		})
 	}
 	// nothing
@@ -458,4 +445,12 @@ func newDatabase(t *testing.T) *sql.DB {
 		t.Fatal(testutil.Callers(), err)
 	}
 	return db
+}
+
+func unhex(s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }

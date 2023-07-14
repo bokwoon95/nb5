@@ -31,7 +31,7 @@
         <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,./:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FileName }}" required itemprop="file_name">
         {{- if .FileNameErrors }}
         <ul>
-            {{- range $error := $FileNameErrors }}
+            {{- range $error := .FileNameErrors }}
             <li itemprop="file_name_errors">{{ $error }}
             {{- end }}
         </ul>
