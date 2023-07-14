@@ -293,7 +293,12 @@ func Test_GET_create(t *testing.T) {
 }
 
 func Test_POST_create(t *testing.T) {
-	type Data struct {
+	type Request struct {
+		FilePath   string `json:"file_path,omitempty"`
+		FolderPath string `json:"folder_path,omitempty"`
+		FileName   string `json:"file_name,omitempty"`
+	}
+	type Response struct {
 		Errors           []string `json:"errors,omitempty"`
 		FolderPath       string   `json:"folder_path,omitempty"`
 		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
@@ -311,26 +316,26 @@ func Test_POST_create(t *testing.T) {
 		folderPath    string  // request folder_path param
 		fileName      string  // request file_name param
 		wantLocation  string  // response Location header (without the raw query after the "?")
-		requestData   Data
-		responseData  Data
+		request       Request
+		response      Response
 	}
 
 	tests := []TestTable{{
 		description: "missing arguments",
 		testFS:      &TestFS{fstest.MapFS{}},
-		requestData: Data{},
-		responseData: Data{
+		request:     Request{},
+		response: Response{
 			Errors: []string{"missing arguments"},
 		},
 	}, {
 		description: "name validation error",
 		testFS:      &TestFS{fstest.MapFS{}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "/FOO///BAR/baz#$%&.md",
 			FolderPath: "/FOO///BAR/",
 			FileName:   "baz#$%&.md",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "/FOO///BAR/baz#$%&.md",
 			FilePathErrors: []string{
 				"cannot have leading slash",
@@ -353,12 +358,12 @@ func Test_POST_create(t *testing.T) {
 	}, {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
 		testFS:      &TestFS{fstest.MapFS{}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "foo/bar/baz.md",
 			FolderPath: "foo/bar",
 			FileName:   "baz.md",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "foo/bar/baz.md",
 			FilePathErrors: []string{
 				"path has to start with posts, notes, pages, templates or assets",
@@ -374,12 +379,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "posts/foo/bar/baz.md",
 			FolderPath: "posts/foo/bar",
 			FileName:   "baz.md",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "posts/foo/bar/baz.md",
 			FilePathErrors: []string{
 				"cannot create a file here",
@@ -395,12 +400,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "notes/foo/bar/baz.md",
 			FolderPath: "notes/foo/bar",
 			FileName:   "baz.md",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "notes/foo/bar/baz.md",
 			FilePathErrors: []string{
 				"cannot create a file here",
@@ -416,12 +421,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"posts": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "posts/baz.sh",
 			FolderPath: "posts",
 			FileName:   "baz.sh",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "posts/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .md)",
@@ -437,12 +442,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"notes": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "notes/baz.sh",
 			FolderPath: "notes",
 			FileName:   "baz.sh",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "notes/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .md)",
@@ -458,12 +463,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "pages/foo/bar/baz.sh",
 			FolderPath: "pages/foo/bar",
 			FileName:   "baz.sh",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "pages/foo/bar/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .html)",
@@ -479,12 +484,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "templates/foo/bar/baz.sh",
 			FolderPath: "templates/foo/bar",
 			FileName:   "baz.sh",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "templates/foo/bar/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .html)",
@@ -500,12 +505,12 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
-		requestData: Data{
+		request: Request{
 			FilePath:   "assets/foo/bar/baz.sh",
 			FolderPath: "assets/foo/bar",
 			FileName:   "baz.sh",
 		},
-		responseData: Data{
+		response: Response{
 			FilePath: "assets/foo/bar/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
@@ -531,8 +536,8 @@ func Test_POST_create(t *testing.T) {
 				ContentDomain: "notebrew.blog",
 				MultisiteMode: "subdomain",
 			}
-			b, err := json.Marshal(Data{
-				FilePath: tt.requestData.FilePath,
+			b, err := json.Marshal(Request{
+				FilePath: tt.request.FilePath,
 			})
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
@@ -547,21 +552,21 @@ func Test_POST_create(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, "")
-			response := w.Result()
-			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+			result := w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
-			var gotResponseData Data
-			err = json.Unmarshal(w.Body.Bytes(), &gotResponseData)
+			var gotResponse Response
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
-			wantResponseData := Data{
-				Errors:         tt.responseData.Errors,
-				FilePath:       tt.responseData.FilePath,
-				FilePathErrors: tt.responseData.FilePathErrors,
+			wantResponse := Response{
+				Errors:         tt.response.Errors,
+				FilePath:       tt.response.FilePath,
+				FilePathErrors: tt.response.FilePathErrors,
 			}
-			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
 		})
@@ -576,9 +581,9 @@ func Test_POST_create(t *testing.T) {
 				ContentDomain: "notebrew.blog",
 				MultisiteMode: "subdomain",
 			}
-			b, err := json.Marshal(Data{
-				FolderPath: tt.requestData.FolderPath,
-				FileName:   tt.requestData.FileName,
+			b, err := json.Marshal(Request{
+				FolderPath: tt.request.FolderPath,
+				FileName:   tt.request.FileName,
 			})
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
@@ -593,23 +598,23 @@ func Test_POST_create(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, "")
-			response := w.Result()
-			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+			result := w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
-			var gotResponseData Data
-			err = json.Unmarshal(w.Body.Bytes(), &gotResponseData)
+			var gotResponse Response
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
-			wantResponseData := Data{
-				Errors:           tt.responseData.Errors,
-				FolderPath:       tt.responseData.FolderPath,
-				FolderPathErrors: tt.responseData.FolderPathErrors,
-				FileName:         tt.responseData.FileName,
-				FileNameErrors:   tt.responseData.FileNameErrors,
+			wantResponse := Response{
+				Errors:           tt.response.Errors,
+				FolderPath:       tt.response.FolderPath,
+				FolderPathErrors: tt.response.FolderPathErrors,
+				FileName:         tt.response.FileName,
+				FileNameErrors:   tt.response.FileNameErrors,
 			}
-			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
 		})
@@ -625,7 +630,7 @@ func Test_POST_create(t *testing.T) {
 				MultisiteMode: "subdomain",
 			}
 			values := url.Values{
-				"file_path": []string{tt.requestData.FilePath},
+				"file_path": []string{tt.request.FilePath},
 			}
 			r, err := http.NewRequest("POST", "", strings.NewReader(values.Encode()))
 			if err != nil {
@@ -637,23 +642,23 @@ func Test_POST_create(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, "")
-			response := w.Result()
+			result := w.Result()
 			if tt.wantLocation != "" {
-				if diff := testutil.Diff(response.StatusCode, http.StatusFound); diff != "" {
+				if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 					t.Fatal(testutil.Callers(), diff, w.Body.String())
 				}
 				// TODO: make sure the Location header matches tt.wantLocation.
 				// TODO: assert that the linked file exists in the filesystem.
 				return
 			}
-			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
 			itemprops, err := getItemprops(w.Body.String())
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
-			gotResponseData := Data{
+			gotResponse := Response{
 				FilePath:         itemprops.Get("file_path"),
 				FilePathErrors:   itemprops["file_path_errors"],
 				FolderPath:       itemprops.Get("folder_path"),
@@ -661,11 +666,11 @@ func Test_POST_create(t *testing.T) {
 				FileName:         itemprops.Get("file_name"),
 				FileNameErrors:   itemprops["file_name_errors"],
 			}
-			wantResponseData := Data{
-				FilePath:       tt.responseData.FilePath,
-				FilePathErrors: tt.responseData.FilePathErrors,
+			wantResponse := Response{
+				FilePath:       tt.response.FilePath,
+				FilePathErrors: tt.response.FilePathErrors,
 			}
-			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
 		})
@@ -681,8 +686,8 @@ func Test_POST_create(t *testing.T) {
 				MultisiteMode: "subdomain",
 			}
 			values := url.Values{
-				"folder_path": []string{tt.requestData.FolderPath},
-				"file_name":   []string{tt.requestData.FileName},
+				"folder_path": []string{tt.request.FolderPath},
+				"file_name":   []string{tt.request.FileName},
 			}
 			r, err := http.NewRequest("POST", "", strings.NewReader(values.Encode()))
 			if err != nil {
@@ -694,23 +699,23 @@ func Test_POST_create(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, "")
-			response := w.Result()
+			result := w.Result()
 			if tt.wantLocation != "" {
-				if diff := testutil.Diff(response.StatusCode, http.StatusFound); diff != "" {
+				if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 					t.Fatal(testutil.Callers(), diff, w.Body.String())
 				}
 				// TODO: make sure the Location header matches tt.wantLocation.
 				// TODO: assert that the linked file exists in the filesystem.
 				return
 			}
-			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
 			itemprops, err := getItemprops(w.Body.String())
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
-			gotResponseData := Data{
+			gotResponse := Response{
 				FilePath:         itemprops.Get("file_path"),
 				FilePathErrors:   itemprops["file_path_errors"],
 				FolderPath:       itemprops.Get("folder_path"),
@@ -718,13 +723,13 @@ func Test_POST_create(t *testing.T) {
 				FileName:         itemprops.Get("file_name"),
 				FileNameErrors:   itemprops["file_name_errors"],
 			}
-			wantResponseData := Data{
-				FolderPath:       tt.responseData.FolderPath,
-				FolderPathErrors: tt.responseData.FolderPathErrors,
-				FileName:         tt.responseData.FileName,
-				FileNameErrors:   tt.responseData.FileNameErrors,
+			wantResponse := Response{
+				FolderPath:       tt.response.FolderPath,
+				FolderPathErrors: tt.response.FolderPathErrors,
+				FileName:         tt.response.FileName,
+				FileNameErrors:   tt.response.FileNameErrors,
 			}
-			if diff := testutil.Diff(gotResponseData, wantResponseData); diff != "" {
+			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
 		})
@@ -738,6 +743,7 @@ func Test_POST_create(t *testing.T) {
 	// asset filename doesn't have valid extension (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// parent folder doesn't exist (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 	// Using os.DirFS instead of TestFS causing ErrUnwritable (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
+	// TODO: make sure that at least one of the error tests have POST urls with query parameters, making it possible to test that the query params are cleared successfully on redirect. We do not want query params to persist because it will force the errors to never show up.
 }
 
 func Test_POST_create_autogenerateID(t *testing.T) {

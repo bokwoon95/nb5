@@ -595,14 +595,19 @@ type contextKey struct{}
 var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix string) {
-	type Data struct {
+	type Request struct {
+		FilePath   string `json:"file_path,omitempty"`
+		FolderPath string `json:"folder_path,omitempty"`
+		FileName   string `json:"file_name,omitempty"`
+	}
+	type Response struct {
 		Errors           []string `json:"errors,omitempty"`
+		FilePath         string   `json:"file_path,omitempty"`
+		FilePathErrors   []string `json:"file_path_errors,omitempty"`
 		FolderPath       string   `json:"folder_path,omitempty"`
 		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
 		FileName         string   `json:"file_name,omitempty"`
 		FileNameErrors   []string `json:"file_name_errors,omitempty"`
-		FilePath         string   `json:"file_path,omitempty"`
-		FilePathErrors   []string `json:"file_path_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -623,13 +628,13 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 			return
 		}
-		var data Data
+		var response Response
 		if len(r.Form) > 0 {
-			data.FolderPath = r.Form.Get("folder_path")
-			data.FileName = r.Form.Get("file_name")
-			data.FilePath = r.Form.Get("file_path")
+			response.FolderPath = r.Form.Get("folder_path")
+			response.FileName = r.Form.Get("file_name")
+			response.FilePath = r.Form.Get("file_path")
 		} else {
-			_, err := nbrew.getSession(r, "flash_session", &data)
+			_, err := nbrew.getSession(r, "flash_session", &response)
 			if err != nil {
 				logger.Error(err.Error())
 			}
@@ -644,7 +649,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		buf := bufPool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufPool.Put(buf)
-		err = tmpl.Execute(buf, &data)
+		err = tmpl.Execute(buf, &response)
 		if err != nil {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -652,10 +657,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		}
 		buf.WriteTo(w)
 	case "POST":
-		writeResponse := func(w http.ResponseWriter, r *http.Request, data Data) {
+		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
 			accept, _, _ := mime.ParseMediaType(r.Header.Get("Accept"))
 			if accept == "application/json" {
-				b, err := json.Marshal(&data)
+				b, err := json.Marshal(&response)
 				if err != nil {
 					logger.Error(err.Error())
 					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -664,11 +669,11 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if len(data.Errors) > 0 ||
-				len(data.FilePathErrors) > 0 ||
-				len(data.FolderPathErrors) > 0 ||
-				len(data.FileNameErrors) > 0 {
-				err := nbrew.setSession(w, r, data, &http.Cookie{
+			if len(response.Errors) > 0 ||
+				len(response.FilePathErrors) > 0 ||
+				len(response.FolderPathErrors) > 0 ||
+				len(response.FileNameErrors) > 0 {
+				err := nbrew.setSession(w, r, response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
 					Secure:   nbrew.Scheme == "https://",
@@ -685,9 +690,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 				return
 			}
-			filePath := data.FilePath
+			filePath := response.FilePath
 			if filePath == "" {
-				filePath = path.Join(data.FolderPath, data.FileName)
+				filePath = path.Join(response.FolderPath, response.FileName)
 			}
 			var redirectURL string
 			if nbrew.MultisiteMode == "subdirectory" {
@@ -698,10 +703,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 		}
 
-		var data Data
+		var request Request
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if contentType == "application/json" {
-			err := json.NewDecoder(r.Body).Decode(&data)
+			err := json.NewDecoder(r.Body).Decode(&request)
 			if err != nil {
 				var syntaxErr *json.SyntaxError
 				if errors.As(err, &syntaxErr) {
@@ -712,53 +717,49 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			data.Errors = nil
-			data.FilePathErrors = nil
-			data.FolderPathErrors = nil
-			data.FileNameErrors = nil
 		} else {
 			err := r.ParseForm()
 			if err != nil {
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
 			}
-			data.FolderPath = r.Form.Get("folder_path")
-			data.FileName = r.Form.Get("file_name")
-			data.FilePath = r.Form.Get("file_path")
+			request.FolderPath = r.Form.Get("folder_path")
+			request.FileName = r.Form.Get("file_name")
+			request.FilePath = r.Form.Get("file_path")
 		}
 
-		if data.FilePath == "" && data.FolderPath == "" && data.FileName == "" {
-			data.Errors = []string{"missing arguments"}
-			writeResponse(w, r, data)
+		if request.FilePath == "" && request.FolderPath == "" && request.FileName == "" {
+			writeResponse(w, r, Response{
+				Errors: []string{"missing arguments"},
+			})
 			return
 		}
 
 		// filePathProvidedByUser tracks whether the user provided file_path or
 		// folder_path and file_name.
 		var filePathProvidedByUser bool
-
 		// filePath is the path of the file to create, obtained from either
 		// file_path or path.Join(folder_path, file_name).
 		var filePath string
-
-		if data.FilePath != "" {
+		var response Response
+		if request.FilePath != "" {
 			filePathProvidedByUser = true
-			filePath = data.FilePath
-			data.FolderPath = ""
-			data.FileName = ""
-			data.FilePathErrors = validatePath(data.FilePath)
-			if len(data.FilePathErrors) > 0 {
-				writeResponse(w, r, data)
+			filePath = request.FilePath
+			response.FilePath = request.FilePath
+			response.FilePathErrors = validatePath(request.FilePath)
+			if len(response.FilePathErrors) > 0 {
+				writeResponse(w, r, response)
 				return
 			}
 		} else {
 			filePathProvidedByUser = false
-			filePath = path.Join(data.FolderPath, data.FileName)
-			data.FilePath = ""
-			data.FolderPathErrors = validatePath(data.FolderPath)
-			data.FileNameErrors = validateName(data.FileName)
-			if len(data.FolderPathErrors) > 0 || len(data.FileNameErrors) > 0 {
-				writeResponse(w, r, data)
+			filePath = path.Join(request.FolderPath, request.FileName)
+			response.FolderPath = request.FolderPath
+			response.FileName = request.FileName
+			response.FolderPathErrors = validatePath(request.FolderPath)
+			response.FileNameErrors = validateName(request.FileName)
+			if len(response.FolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
+				writeResponse(w, r, response)
 				return
 			}
 		}
@@ -770,11 +771,11 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			if slashCount > 1 {
 				const errmsg = "cannot create a file here"
 				if filePathProvidedByUser {
-					data.FilePathErrors = append(data.FilePathErrors, errmsg)
+					response.FilePathErrors = append(response.FilePathErrors, errmsg)
 				} else {
-					data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
+					response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
 				}
-				writeResponse(w, r, data)
+				writeResponse(w, r, response)
 				return
 			}
 			if tail == "" || (!strings.Contains(tail, "/") && filepath.Ext(tail) == "") {
@@ -783,22 +784,22 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			if filepath.Ext(filePath) != ".md" {
 				const errmsg = "invalid extension (must end in .md)"
 				if filePathProvidedByUser {
-					data.FilePathErrors = append(data.FilePathErrors, errmsg)
+					response.FilePathErrors = append(response.FilePathErrors, errmsg)
 				} else {
-					data.FileNameErrors = append(data.FileNameErrors, errmsg)
+					response.FileNameErrors = append(response.FileNameErrors, errmsg)
 				}
-				writeResponse(w, r, data)
+				writeResponse(w, r, response)
 				return
 			}
 		case "pages", "templates":
 			if filepath.Ext(filePath) != ".html" {
 				const errmsg = "invalid extension (must end in .html)"
 				if filePathProvidedByUser {
-					data.FilePathErrors = append(data.FilePathErrors, errmsg)
+					response.FilePathErrors = append(response.FilePathErrors, errmsg)
 				} else {
-					data.FileNameErrors = append(data.FileNameErrors, errmsg)
+					response.FileNameErrors = append(response.FileNameErrors, errmsg)
 				}
-				writeResponse(w, r, data)
+				writeResponse(w, r, response)
 				return
 			}
 		case "assets":
@@ -819,21 +820,21 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			if !match {
 				errmsg := fmt.Sprintf("invalid extension (must end in one of: %s)", strings.Join(allowedExts, ", "))
 				if filePathProvidedByUser {
-					data.FilePathErrors = append(data.FilePathErrors, errmsg)
+					response.FilePathErrors = append(response.FilePathErrors, errmsg)
 				} else {
-					data.FileNameErrors = append(data.FileNameErrors, errmsg)
+					response.FileNameErrors = append(response.FileNameErrors, errmsg)
 				}
-				writeResponse(w, r, data)
+				writeResponse(w, r, response)
 				return
 			}
 		default:
 			const errmsg = "path has to start with posts, notes, pages, templates or assets"
 			if filePathProvidedByUser {
-				data.FilePathErrors = append(data.FilePathErrors, errmsg)
+				response.FilePathErrors = append(response.FilePathErrors, errmsg)
 			} else {
-				data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
+				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
 			}
-			writeResponse(w, r, data)
+			writeResponse(w, r, response)
 			return
 		}
 
@@ -844,19 +845,19 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				errmsg = "parent folder does not exist"
 			}
 			if filePathProvidedByUser {
-				data.FilePathErrors = append(data.FilePathErrors, errmsg)
+				response.FilePathErrors = append(response.FilePathErrors, errmsg)
 			} else {
-				data.FolderPathErrors = append(data.FolderPathErrors, errmsg)
+				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
 			}
-			writeResponse(w, r, data)
+			writeResponse(w, r, response)
 			return
 		}
 
 		writer, err := OpenWriter(nbrew.FS, filePath)
 		if err != nil {
 			if errors.Is(err, ErrUnwritable) {
-				data.Errors = append(data.Errors, err.Error())
-				writeResponse(w, r, data)
+				response.Errors = append(response.Errors, err.Error())
+				writeResponse(w, r, response)
 				return
 			}
 			logger.Error(err.Error())
@@ -869,7 +870,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		writeResponse(w, r, data)
+		writeResponse(w, r, response)
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
