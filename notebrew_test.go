@@ -310,6 +310,15 @@ func Test_GET_create(t *testing.T) {
 }
 
 func Test_POST_create(t *testing.T) {
+	type Data struct {
+		Errors           []string `json:"errors,omitempty"`
+		FolderPath       string   `json:"folder_path,omitempty"`
+		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
+		FileName         string   `json:"file_name,omitempty"`
+		FileNameErrors   []string `json:"file_name_errors,omitempty"`
+		FilePath         string   `json:"file_path,omitempty"`
+		FilePathErrors   []string `json:"file_path_errors,omitempty"`
+	}
 	type TestTable struct {
 		description          string // test description
 		fsys                 fs.FS  // Notebrew.FS
@@ -319,6 +328,8 @@ func Test_POST_create(t *testing.T) {
 		folderPath           string // request folder_path param
 		fileName             string // request file_name param
 		wantLocation         string // response Location header (without the raw query after the "?")
+		requestData          Data
+		responseData         Data
 		wantErrors           []string
 		wantFilePathErrors   []string
 		wantFolderPathErrors []string
@@ -331,23 +342,30 @@ func Test_POST_create(t *testing.T) {
 	}, {
 		description: "name validation error",
 		fsys:        TestFS{fstest.MapFS{}},
-		filePath:    "/FOO///BAR/baz#$%&.md",
-		folderPath:  "/FOO///BAR/",
-		fileName:    "baz#$%&.md",
-		wantFilePathErrors: []string{
-			"cannot have leading slash",
-			"cannot have multiple slashes next to each other",
-			"no uppercase letters [A-Z] allowed",
-			"forbidden characters: #$%&",
+		requestData: Data{
+			FilePath:   "/FOO///BAR/baz#$%&.md",
+			FolderPath: "/FOO///BAR/",
+			FileName:   "baz#$%&.md",
 		},
-		wantFolderPathErrors: []string{
-			"cannot have leading slash",
-			"cannot have trailing slash",
-			"cannot have multiple slashes next to each other",
-			"no uppercase letters [A-Z] allowed",
-		},
-		wantFileNameErrors: []string{
-			"forbidden characters: #$%&",
+		responseData: Data{
+			FilePath: "/FOO///BAR/baz#$%&.md",
+			FilePathErrors: []string{
+				"cannot have leading slash",
+				"cannot have multiple slashes next to each other",
+				"no uppercase letters [A-Z] allowed",
+				"forbidden characters: #$%&",
+			},
+			FolderPath: "/FOO///BAR/",
+			FolderPathErrors: []string{
+				"cannot have leading slash",
+				"cannot have trailing slash",
+				"cannot have multiple slashes next to each other",
+				"no uppercase letters [A-Z] allowed",
+			},
+			FileName: "baz#$%&.md",
+			FileNameErrors: []string{
+				"forbidden characters: #$%&",
+			},
 		},
 	}, {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
@@ -355,11 +373,16 @@ func Test_POST_create(t *testing.T) {
 		filePath:    "foo/bar/baz.md",
 		folderPath:  "foo/bar",
 		fileName:    "baz.md",
-		wantFilePathErrors: []string{
-			"path has to start with posts, notes, pages, templates or assets",
-		},
-		wantFolderPathErrors: []string{
-			"path has to start with posts, notes, pages, templates or assets",
+		responseData: Data{
+			FilePath: "foo/bar/baz.md",
+			FilePathErrors: []string{
+				"path has to start with posts, notes, pages, templates or assets",
+			},
+			FolderPath: "foo/bar",
+			FolderPathErrors: []string{
+				"path has to start with posts, notes, pages, templates or assets",
+			},
+			FileName: "baz.md",
 		},
 	}, {
 		description: "post path cannot be created",

@@ -596,16 +596,13 @@ var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	type Data struct {
-		Errors []string `json:"errors,omitempty"`
-
+		Errors           []string `json:"errors,omitempty"`
 		FolderPath       string   `json:"folder_path,omitempty"`
 		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
-
-		FileName       string   `json:"file_name,omitempty"`
-		FileNameErrors []string `json:"file_name_errors,omitempty"`
-
-		FilePath       string   `json:"file_path,omitempty"`
-		FilePathErrors []string `json:"file_path_errors,omitempty"`
+		FileName         string   `json:"file_name,omitempty"`
+		FileNameErrors   []string `json:"file_name_errors,omitempty"`
+		FilePath         string   `json:"file_path,omitempty"`
+		FilePathErrors   []string `json:"file_path_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
