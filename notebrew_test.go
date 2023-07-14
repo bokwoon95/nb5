@@ -157,11 +157,11 @@ func Test_create(t *testing.T) {
 
 func Test_create_GET(t *testing.T) {
 	type TestTable struct {
-		description    string           // test description
-		seedQueries    []sq.CustomQuery // queries to seed database with
-		header         http.Header      // request header
-		rawQuery       string           // request GET query parameters
-		wantPageValues url.Values       // values extracted from parsing response html microdata
+		description   string           // test description
+		seedQueries   []sq.CustomQuery // queries to seed database with
+		header        http.Header      // request header
+		rawQuery      string           // request GET query parameters
+		wantItemprops url.Values       // values extracted from parsing response html microdata
 	}
 
 	var (
@@ -171,20 +171,20 @@ func Test_create_GET(t *testing.T) {
 
 	tests := []TestTable{{
 		description: "basic",
-		wantPageValues: url.Values{
+		wantItemprops: url.Values{
 			"file_path": []string{""},
 		},
 	}, {
 		description: "folder_path and file_name provided",
 		rawQuery:    "folder_path=foo/bar&file_name=baz.md",
-		wantPageValues: url.Values{
+		wantItemprops: url.Values{
 			"folder_path": []string{"foo/bar"},
 			"file_name":   []string{"baz.md"},
 		},
 	}, {
 		description: "file_path provided",
 		rawQuery:    "file_path=foo/bar/baz.md",
-		wantPageValues: url.Values{
+		wantItemprops: url.Values{
 			"file_path": []string{"foo/bar/baz.md"},
 		},
 	}, {
@@ -211,7 +211,7 @@ func Test_create_GET(t *testing.T) {
 		header: http.Header{
 			"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken), "0")},
 		},
-		wantPageValues: url.Values{
+		wantItemprops: url.Values{
 			"folder_path": []string{"/FOO///BAR/"},
 			"folder_path_errors": []string{
 				"cannot have leading slash",
@@ -268,7 +268,7 @@ func Test_create_GET(t *testing.T) {
 			}
 			var node *html.Node
 			nodes := []*html.Node{root}
-			gotPageValues := make(url.Values)
+			gotItemprops := make(url.Values)
 			for len(nodes) > 0 {
 				node, nodes = nodes[len(nodes)-1], nodes[:len(nodes)-1]
 				if node == nil {
@@ -312,11 +312,11 @@ func Test_create_GET(t *testing.T) {
 						}
 						itempropValue = innerHTML.String()
 					}
-					gotPageValues.Add(itempropKey, strings.TrimSpace(itempropValue))
+					gotItemprops.Add(itempropKey, strings.TrimSpace(itempropValue))
 				}
 				nodes = append(nodes, node.NextSibling, node.FirstChild)
 			}
-			if diff := testutil.Diff(gotPageValues, tt.wantPageValues); diff != "" {
+			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
 				t.Error(testutil.Callers(), diff, body)
 			}
 		})
@@ -533,4 +533,67 @@ func hashToken(token []byte) []byte {
 	copy(tokenHash[:8], token[:8])
 	copy(tokenHash[8:], checksum[:])
 	return tokenHash
+}
+
+func getItemprops(t *testing.T, body string) url.Values {
+	root, err := html.Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(testutil.Callers(), err, body)
+	}
+	var node *html.Node
+	nodes := []*html.Node{root}
+	itemprops := make(url.Values)
+	for len(nodes) > 0 {
+		node, nodes = nodes[len(nodes)-1], nodes[:len(nodes)-1]
+		if node == nil {
+			continue
+		}
+		hasItemprop := false
+		var itempropKey, itempropValue string
+		for _, attr := range node.Attr {
+			if attr.Key == "itemprop" {
+				hasItemprop = true
+				itempropKey = attr.Val
+				break
+			}
+		}
+		if hasItemprop {
+			attrs := make(map[string]string)
+			for _, attr := range node.Attr {
+				attrs[attr.Key] = attr.Val
+			}
+			// itemprop value reference:
+			// https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemprop#values
+			switch node.DataAtom {
+			case atom.Meta:
+				itempropValue = attrs["content"]
+			case atom.Audio, atom.Embed, atom.Iframe, atom.Img, atom.Source, atom.Track, atom.Video:
+				itempropValue = attrs["src"]
+			case atom.A, atom.Area, atom.Link:
+				itempropValue = attrs["href"]
+			case atom.Object:
+				itempropValue = attrs["data"]
+			case atom.Data, atom.Meter, atom.Input:
+				itempropValue = attrs["value"]
+			default:
+				var textContent strings.Builder
+				var childNode *html.Node
+				childNodes := []*html.Node{node.FirstChild}
+				for len(childNodes) > 0 {
+					childNode, childNodes = childNodes[len(nodes)-1], childNodes[:len(nodes)-1]
+					if childNode == nil {
+						continue
+					}
+					if childNode.Type == html.TextNode {
+						textContent.WriteString(childNode.Data) // TODO: unescape string?
+					}
+					childNodes = append(childNodes, childNode.NextSibling, childNode.FirstChild)
+				}
+				itempropValue = strings.TrimSpace(textContent.String())
+			}
+			itemprops.Add(itempropKey, itempropValue)
+		}
+		nodes = append(nodes, node.NextSibling, node.FirstChild)
+	}
+	return itemprops
 }
