@@ -606,7 +606,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				logger.Error(err.Error())
 			}
 		}
-		nbrew.clearSession(w, r, "flash_session")
+		// nbrew.clearSession(w, r, "flash_session")
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
 		if err != nil {
 			logger.Error(err.Error())
