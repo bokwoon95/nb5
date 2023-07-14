@@ -2,6 +2,7 @@ package nb5
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -26,12 +27,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/exp/slog"
 )
-
-func init() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		AddSource: true,
-	})))
-}
 
 func Test_validateName(t *testing.T) {
 	type TestTable struct {
@@ -245,7 +240,11 @@ func Test_create_GET(t *testing.T) {
 					t.Fatal(testutil.Callers(), err)
 				}
 			}
-			r, err := http.NewRequest("GET", "", nil)
+			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+				AddSource: true,
+			}))
+			ctx := context.WithValue(context.Background(), loggerKey, logger)
+			r, err := http.NewRequestWithContext(ctx, "GET", "", nil)
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
@@ -419,7 +418,7 @@ func (f *TestFile) Close() error {
 	return nil
 }
 
-var databaseCounter atomic.Int32
+var databaseCounter atomic.Int64
 
 func newDatabase(t *testing.T) *sql.DB {
 	count := databaseCounter.Add(1)
