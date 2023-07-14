@@ -162,7 +162,7 @@ func Test_GET_create(t *testing.T) {
 		seedQueries   []sq.CustomQuery // SQL queries to seed database with
 		header        http.Header      // request header
 		rawQuery      string           // request GET query parameters
-		wantItemprops url.Values       // itemprops extracted from parsing response html microdata
+		wantItemprops url.Values       // itemprops extracted from parsing html response
 	}
 
 	var (
@@ -246,9 +246,7 @@ func Test_GET_create(t *testing.T) {
 					t.Fatal(testutil.Callers(), err)
 				}
 			}
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-				AddSource: true,
-			}))
+			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true}))
 			ctx := context.WithValue(context.Background(), loggerKey, logger)
 			r, err := http.NewRequestWithContext(ctx, "GET", "", nil)
 			if err != nil {
@@ -423,13 +421,13 @@ func Test_POST_create(t *testing.T) {
 				}))
 				ctx := context.WithValue(context.Background(), loggerKey, logger)
 				filePath := path.Join(tt.folderPath, tt.fileName)
-				body, err := json.Marshal(map[string]any{
+				b, err := json.Marshal(map[string]any{
 					"file_path": filePath,
 				})
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
-				r, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(body))
+				r, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(b))
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
@@ -673,7 +671,7 @@ func getItemprops(body string) (url.Values, error) {
 			continue
 		}
 		hasItemprop := false
-		var itempropKey, itempropValue string
+		var itempropKey string
 		for _, attr := range node.Attr {
 			if attr.Key == "itemprop" {
 				hasItemprop = true
@@ -688,6 +686,7 @@ func getItemprops(body string) (url.Values, error) {
 			}
 			// itemprop value reference:
 			// https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemprop#values
+			var itempropValue string
 			switch node.DataAtom {
 			case atom.Meta:
 				itempropValue = attrs["content"]
