@@ -582,7 +582,7 @@ func validatePath(path string) (errmsgs []string) {
 		errmsgs = append(errmsgs, "forbidden characters: "+forbiddenChars.String())
 	}
 	if hasDotSuffixError {
-		errmsgs = append(errmsgs, "name cannot end in dot")
+		errmsgs = append(errmsgs, "path segment cannot end in dot")
 	}
 	if len(forbiddenNames) > 0 {
 		errmsgs = append(errmsgs, "forbidden name(s): "+strings.Join(forbiddenNames, ", "))
