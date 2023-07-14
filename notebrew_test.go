@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -293,14 +294,14 @@ func Test_GET_create(t *testing.T) {
 
 func Test_POST_create(t *testing.T) {
 	type TestTable struct {
-		description          string      // test description
-		multisiteMode        string      // Notebrew.MultisiteMode
-		sitePrefix           string      // sitePrefix argument
-		header               http.Header // request header
-		folderPath           string      // request folder_path param
-		fileName             string      // request file_name param
-		wantStatusCode       int         // response status code
-		wantLocation         string      // response Location header (without the raw query after the "?")
+		description          string // test description
+		fsys                 fs.FS  // Notebrew.FS
+		multisiteMode        string // Notebrew.MultisiteMode
+		sitePrefix           string // sitePrefix argument
+		folderPath           string // request folder_path param
+		fileName             string // request file_name param
+		wantStatusCode       int    // response status code
+		wantLocation         string // response Location header (without the raw query after the "?")
 		wantErrors           []string
 		wantFolderPathErrors []string
 		wantFileNameErrors   []string
@@ -311,6 +312,7 @@ func Test_POST_create(t *testing.T) {
 		wantErrors:  []string{"missing arguments"},
 	}, {
 		description: "name validation error",
+		fsys:        TestFS{fstest.MapFS{}},
 		folderPath:  "/FOO///BAR/",
 		fileName:    "baz#$%&.md",
 		wantFolderPathErrors: []string{
@@ -324,6 +326,7 @@ func Test_POST_create(t *testing.T) {
 		},
 	}, {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
+		fsys:        TestFS{fstest.MapFS{}},
 		folderPath:  "foo/bar",
 		fileName:    "baz.md",
 		wantFolderPathErrors: []string{
@@ -331,50 +334,71 @@ func Test_POST_create(t *testing.T) {
 		},
 	}, {
 		description: "post path cannot be created",
-		folderPath:  "posts/foo/bar",
-		fileName:    "baz.md",
+		fsys: TestFS{fstest.MapFS{
+			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "posts/foo/bar",
+		fileName:   "baz.md",
 		wantFolderPathErrors: []string{
 			"cannot create a file here",
 		},
 	}, {
 		description: "note path cannot be created",
-		folderPath:  "notes/foo/bar",
-		fileName:    "baz.md",
+		fsys: TestFS{fstest.MapFS{
+			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "notes/foo/bar",
+		fileName:   "baz.md",
 		wantFolderPathErrors: []string{
 			"cannot create a file here",
 		},
 	}, {
 		description: "post filename doesnt end in .md",
-		folderPath:  "posts",
-		fileName:    "baz.sh",
+		fsys: TestFS{fstest.MapFS{
+			"posts": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "posts",
+		fileName:   "baz.sh",
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .md)",
 		},
 	}, {
 		description: "note filename doesnt end in .md",
-		folderPath:  "notes",
-		fileName:    "baz.sh",
+		fsys: TestFS{fstest.MapFS{
+			"notes": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "notes",
+		fileName:   "baz.sh",
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .md)",
 		},
 	}, {
 		description: "page filename doesnt end in .html",
-		folderPath:  "pages/foo/bar",
-		fileName:    "baz.sh",
+		fsys: TestFS{fstest.MapFS{
+			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "pages/foo/bar",
+		fileName:   "baz.sh",
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .html)",
 		},
 	}, {
 		description: "template filename doesnt end in .html",
-		folderPath:  "templates/foo/bar",
-		fileName:    "baz.sh",
+		fsys: TestFS{fstest.MapFS{
+			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "templates/foo/bar",
+		fileName:   "baz.sh",
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in .html)",
 		},
 	}, {
 		description: "asset filename doesnt have valid extension",
-		folderPath:  "templates/foo/bar",
-		fileName:    "baz.sh",
+		fsys: TestFS{fstest.MapFS{
+			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		folderPath: "assets/foo/bar",
+		fileName:   "baz.sh",
 		wantFolderPathErrors: []string{
 			"invalid extension (must end in one of: )",
 		},
@@ -385,9 +409,49 @@ func Test_POST_create(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Run("json, file_path", func(t *testing.T) {
 				t.Parallel()
+				nbrew := &Notebrew{
+					FS:            tt.fsys,
+					DB:            newDatabase(t),
+					Dialect:       sq.DialectSQLite,
+					Scheme:        "https://",
+					AdminDomain:   "notebrew.com",
+					ContentDomain: "notebrew.blog",
+					MultisiteMode: "subdomain",
+				}
+				logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+					AddSource: true,
+				}))
+				ctx := context.WithValue(context.Background(), loggerKey, logger)
+				filePath := path.Join(tt.folderPath, tt.fileName)
+				body, err := json.Marshal(map[string]any{
+					"file_path": filePath,
+				})
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				r, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(body))
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				r.Header = http.Header{
+					"Content-Type": []string{"application/json"},
+					"Accept":       []string{"application/json"},
+				}
+				w := httptest.NewRecorder()
+				nbrew.create(w, r, "")
 			})
 			t.Run("html form, folder_path and file_name", func(t *testing.T) {
 				t.Parallel()
+				nbrew := &Notebrew{
+					FS:            tt.fsys,
+					DB:            newDatabase(t),
+					Dialect:       sq.DialectSQLite,
+					Scheme:        "https://",
+					AdminDomain:   "notebrew.com",
+					ContentDomain: "notebrew.blog",
+					MultisiteMode: "subdomain",
+				}
+				_ = nbrew
 			})
 		})
 	}
