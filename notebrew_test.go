@@ -320,15 +320,17 @@ func Test_POST_create(t *testing.T) {
 	}
 
 	tests := []TestTable{{
-		description: "missing arguments",
-		testFS:      &TestFS{fstest.MapFS{}},
-		request:     Request{},
+		description:   "missing arguments",
+		testFS:        &TestFS{fstest.MapFS{}},
+		multisiteMode: "subdomain",
+		request:       Request{},
 		response: Response{
 			Errors: []string{"missing arguments"},
 		},
 	}, {
-		description: "name validation error",
-		testFS:      &TestFS{fstest.MapFS{}},
+		description:   "name validation error",
+		testFS:        &TestFS{fstest.MapFS{}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "/FOO///BAR/baz#$%&.md",
 			FolderPath: "/FOO///BAR/",
@@ -355,8 +357,9 @@ func Test_POST_create(t *testing.T) {
 			},
 		},
 	}, {
-		description: "path doesn't start with posts, notes, pages, templates or assets",
-		testFS:      &TestFS{fstest.MapFS{}},
+		description:   "path doesn't start with posts, notes, pages, templates or assets",
+		testFS:        &TestFS{fstest.MapFS{}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "foo/bar/baz.md",
 			FolderPath: "foo/bar",
@@ -378,6 +381,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "posts/foo/bar/baz.md",
 			FolderPath: "posts/foo/bar",
@@ -399,6 +403,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "notes/foo/bar/baz.md",
 			FolderPath: "notes/foo/bar",
@@ -420,6 +425,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"posts": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "posts/baz.sh",
 			FolderPath: "posts",
@@ -441,6 +447,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"notes": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "notes/baz.sh",
 			FolderPath: "notes",
@@ -462,6 +469,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "pages/foo/bar/baz.sh",
 			FolderPath: "pages/foo/bar",
@@ -483,6 +491,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "templates/foo/bar/baz.sh",
 			FolderPath: "templates/foo/bar",
@@ -504,6 +513,7 @@ func Test_POST_create(t *testing.T) {
 		testFS: &TestFS{fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "assets/foo/bar/baz.sh",
 			FolderPath: "assets/foo/bar",
@@ -521,8 +531,9 @@ func Test_POST_create(t *testing.T) {
 			},
 		},
 	}, {
-		description: "parent folder doesnt exist",
-		testFS:      &TestFS{fstest.MapFS{}},
+		description:   "parent folder doesnt exist",
+		testFS:        &TestFS{fstest.MapFS{}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "assets/foo/bar/baz.js",
 			FolderPath: "assets/foo/bar",
@@ -549,6 +560,7 @@ func Test_POST_create(t *testing.T) {
 				Data: []byte(`"use strict";`),
 			},
 		}},
+		multisiteMode: "subdomain",
 		request: Request{
 			FilePath:   "assets/foo/bar/baz.js",
 			FolderPath: "assets/foo/bar",
@@ -563,14 +575,15 @@ func Test_POST_create(t *testing.T) {
 	}, {
 		description: "file already exists (with sitePrefix)",
 		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar": &fstest.MapFile{
+			"~bokwoon/assets/foo/bar": &fstest.MapFile{
 				Mode: fs.ModeDir,
 			},
-			"assets/foo/bar/baz.js": &fstest.MapFile{
+			"~bokwoon/assets/foo/bar/baz.js": &fstest.MapFile{
 				Data: []byte(`"use strict";`),
 			},
 		}},
-		sitePrefix: "bokwoon",
+		multisiteMode: "subdirectory",
+		sitePrefix:    "~bokwoon",
 		request: Request{
 			FilePath:   "assets/foo/bar/baz.js",
 			FolderPath: "assets/foo/bar",
@@ -596,7 +609,7 @@ func Test_POST_create(t *testing.T) {
 				Scheme:        "https://",
 				AdminDomain:   "notebrew.com",
 				ContentDomain: "notebrew.blog",
-				MultisiteMode: "subdomain",
+				MultisiteMode: tt.multisiteMode,
 			}
 			b, err := json.Marshal(Request{
 				FilePath: tt.request.FilePath,
@@ -650,7 +663,7 @@ func Test_POST_create(t *testing.T) {
 				Scheme:        "https://",
 				AdminDomain:   "notebrew.com",
 				ContentDomain: "notebrew.blog",
-				MultisiteMode: "subdomain",
+				MultisiteMode: tt.multisiteMode,
 			}
 			b, err = json.Marshal(Request{
 				FolderPath: tt.request.FolderPath,
@@ -707,7 +720,7 @@ func Test_POST_create(t *testing.T) {
 				Scheme:        "https://",
 				AdminDomain:   "notebrew.com",
 				ContentDomain: "notebrew.blog",
-				MultisiteMode: "subdomain",
+				MultisiteMode: tt.multisiteMode,
 			}
 			values := url.Values{
 				"file_path": []string{tt.request.FilePath},
@@ -782,7 +795,7 @@ func Test_POST_create(t *testing.T) {
 				Scheme:        "https://",
 				AdminDomain:   "notebrew.com",
 				ContentDomain: "notebrew.blog",
-				MultisiteMode: "subdomain",
+				MultisiteMode: tt.multisiteMode,
 			}
 			values = url.Values{
 				"folder_path": []string{tt.request.FolderPath},
