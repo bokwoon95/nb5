@@ -88,3 +88,7 @@ identifications => identity_token
 access_tokens => access_token
 
 a generic sessions table containing payload?
+
+Guiding Principles:
+- It *must* just work.
+- As self-explanatory/intuitive as any other social media site. If you want to author your own webpages, use The One and Only Guide For Writing HTML Pages in Notebrew.
