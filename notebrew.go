@@ -547,8 +547,8 @@ func validatePath(path string) (errmsgs []string) {
 	}
 	var forbiddenChars strings.Builder
 	var forbiddenNames []string
+	var dotSuffixNames []string
 	hasUppercaseChar := false
-	hasDotSuffixError := false
 	writtenChar := make(map[rune]struct{})
 	writtenName := make(map[string]struct{})
 	name, tail, _ := strings.Cut(path, "/")
@@ -565,7 +565,10 @@ func validatePath(path string) (errmsgs []string) {
 			}
 		}
 		if len(name) > 0 && name[len(name)-1] == '.' {
-			hasDotSuffixError = true
+			if _, ok := writtenName[name]; !ok {
+				writtenName[name] = struct{}{}
+				dotSuffixNames = append(dotSuffixNames, name)
+			}
 		}
 		if _, ok := forbiddenNameSet[strings.ToLower(name)]; ok {
 			if _, ok := writtenName[name]; !ok {
@@ -581,8 +584,8 @@ func validatePath(path string) (errmsgs []string) {
 	if forbiddenChars.Len() > 0 {
 		errmsgs = append(errmsgs, "forbidden characters: "+forbiddenChars.String())
 	}
-	if hasDotSuffixError {
-		errmsgs = append(errmsgs, "path segment cannot end in dot")
+	if len(dotSuffixNames) > 0 {
+		errmsgs = append(errmsgs, "name(s) cannot end in dot: "+strings.Join(dotSuffixNames, ", "))
 	}
 	if len(forbiddenNames) > 0 {
 		errmsgs = append(errmsgs, "forbidden name(s): "+strings.Join(forbiddenNames, ", "))
