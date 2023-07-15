@@ -867,16 +867,6 @@ func Test_POST_create(t *testing.T) {
 			}
 		})
 	}
-	// all fields empty (both Content-Type, Accept headers, multisitemode subdirectory)
-	// name validation error (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// post doesn't start with posts, notes, pages, templates or assets (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// post | note created too deep in (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// post | note filename doesn't end in .md (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// page | template filename doesn't end in .html (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// asset filename doesn't have valid extension (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// parent folder doesn't exist (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
-	// file being created already exists (we need to add a new field to Response in order to handle this error on the front end, need to render an error string that contains the link to the already existing resource)
-	// Using os.DirFS instead of TestFS causing ErrUnwritable (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
 }
 
 func Test_POST_create_autogenerateID(t *testing.T) {
@@ -888,6 +878,7 @@ func Test_POST_create_autogenerateID(t *testing.T) {
 // - invalid HTTP methods
 // - nonexistent paths (404)
 // - missing or invalid authentication token
+// - using os.DirFS instead of TestFS causing ErrUnwritable
 
 type TestFS struct {
 	fstest.MapFS
