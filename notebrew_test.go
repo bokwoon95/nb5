@@ -643,9 +643,11 @@ func Test_POST_create(t *testing.T) {
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, "")
 			result := w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
 			if tt.wantLocation != "" {
-				if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
-					t.Fatal(testutil.Callers(), diff, w.Body.String())
+				if diff := testutil.Diff(result.Header.Get("Location"), tt.wantLocation); diff != "" {
 				}
 				// TODO: make sure the Location header matches tt.wantLocation.
 				// TODO: assert that the linked file exists in the filesystem.
