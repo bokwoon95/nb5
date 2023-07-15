@@ -560,6 +560,28 @@ func Test_POST_create(t *testing.T) {
 			FolderPath:            "assets/foo/bar",
 			FileName:              "baz.js",
 		},
+	}, {
+		description: "file already exists (with sitePrefix)",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar": &fstest.MapFile{
+				Mode: fs.ModeDir,
+			},
+			"assets/foo/bar/baz.js": &fstest.MapFile{
+				Data: []byte(`"use strict";`),
+			},
+		}},
+		sitePrefix: "bokwoon",
+		request: Request{
+			FilePath:   "assets/foo/bar/baz.js",
+			FolderPath: "assets/foo/bar",
+			FileName:   "baz.js",
+		},
+		response: Response{
+			ResourceAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
+			FilePath:              "assets/foo/bar/baz.js",
+			FolderPath:            "assets/foo/bar",
+			FileName:              "baz.js",
+		},
 	}}
 
 	for _, tt := range tests {
