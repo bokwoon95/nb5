@@ -844,10 +844,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 
 		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, path.Dir(filePath)))
 		if err != nil {
-			errmsg := err.Error()
-			if errors.Is(err, fs.ErrNotExist) {
-				errmsg = "parent folder does not exist"
+			if !errors.Is(err, fs.ErrNotExist) {
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
 			}
+			const errmsg = "parent folder does not exist"
 			if filePathProvidedByUser {
 				response.FilePathErrors = append(response.FilePathErrors, errmsg)
 			} else {
@@ -859,10 +861,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 
 		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, filePath))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			errmsg := err.Error()
-			logger.Error(errmsg)
-			response.Errors = append(response.Errors, errmsg)
-			writeResponse(w, r, response)
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		if err == nil {
