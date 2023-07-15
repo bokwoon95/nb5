@@ -805,11 +805,15 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			}
 		case "assets":
 			ext := filepath.Ext(filePath)
+			if ext == ".gz" {
+				ext = filepath.Ext(strings.TrimSuffix(filePath, ext))
+			}
 			allowedExts := []string{
 				".html", ".css", ".js", ".md", ".txt",
 				".jpeg", ".jpg", ".png", ".gif", ".svg", ".ico",
 				".eof", ".ttf", ".woff", ".woff2",
 				".csv", ".tsv", ".json", ".xml", ".toml", ".yaml", ".yml",
+				".gz",
 			}
 			match := false
 			for _, allowedExt := range allowedExts {
@@ -819,7 +823,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				}
 			}
 			if !match {
-				errmsg := fmt.Sprintf("invalid extension (must end in one of: %s)", strings.Join(allowedExts, ", "))
+				errmsg := fmt.Sprintf("invalid extension (must be one of: %s)", strings.Join(allowedExts, ", "))
 				if filePathProvidedByUser {
 					response.FilePathErrors = append(response.FilePathErrors, errmsg)
 				} else {
