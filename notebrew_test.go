@@ -308,16 +308,14 @@ func Test_POST_create(t *testing.T) {
 		FilePathErrors   []string `json:"file_path_errors,omitempty"`
 	}
 	type TestTable struct {
-		description   string  // test description
-		testFS        *TestFS // Notebrew.FS
-		multisiteMode string  // Notebrew.MultisiteMode
-		sitePrefix    string  // sitePrefix argument
-		filePath      string  // request file_path param
-		folderPath    string  // request folder_path param
-		fileName      string  // request file_name param
-		wantLocation  string  // response Location header (without the raw query after the "?")
-		request       Request
-		response      Response
+		description   string   // test description
+		testFS        *TestFS  // Notebrew.FS
+		multisiteMode string   // Notebrew.MultisiteMode
+		sitePrefix    string   // sitePrefix argument
+		request       Request  // request payload
+		response      Response // response payload
+		wantLocation  string   // HTTP response Location header
+		testFilePath  string   // if non-empty, file path should be tested that it exists in the filesystem
 	}
 
 	tests := []TestTable{{
@@ -551,7 +549,7 @@ func Test_POST_create(t *testing.T) {
 				"Accept":       []string{"application/json"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.create(w, r, "")
+			nbrew.create(w, r, tt.sitePrefix)
 			result := w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -568,6 +566,16 @@ func Test_POST_create(t *testing.T) {
 			}
 			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
+			}
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Errorf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Error(testutil.Callers(), err)
+					}
+				}
 			}
 		})
 		t.Run(tt.description+" (json) (folder_path and file_path)", func(t *testing.T) {
@@ -597,7 +605,7 @@ func Test_POST_create(t *testing.T) {
 				"Accept":       []string{"application/json"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.create(w, r, "")
+			nbrew.create(w, r, tt.sitePrefix)
 			result := w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -616,6 +624,16 @@ func Test_POST_create(t *testing.T) {
 			}
 			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
+			}
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Errorf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Error(testutil.Callers(), err)
+					}
+				}
 			}
 		})
 		t.Run(tt.description+" (html form) (file_path)", func(t *testing.T) {
@@ -641,17 +659,27 @@ func Test_POST_create(t *testing.T) {
 				"Accept":       []string{"text/html"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.create(w, r, "")
+			nbrew.create(w, r, tt.sitePrefix)
 			result := w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
 			if tt.wantLocation != "" {
 				if diff := testutil.Diff(result.Header.Get("Location"), tt.wantLocation); diff != "" {
+					t.Error(testutil.Callers(), diff)
 				}
-				// TODO: make sure the Location header matches tt.wantLocation.
-				// TODO: assert that the linked file exists in the filesystem.
+				if tt.testFilePath != "" {
+					_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+					if err != nil {
+						if errors.Is(err, fs.ErrNotExist) {
+							t.Errorf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+						} else {
+							t.Error(testutil.Callers(), err)
+						}
+					}
+				}
 				return
+			} else {
 			}
 			// TODO: we never actually get http.StatusOK, even in the case of
 			// an error we are redirected back to an empty url so we have to
@@ -704,7 +732,7 @@ func Test_POST_create(t *testing.T) {
 				"Accept":       []string{"text/html"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.create(w, r, "")
+			nbrew.create(w, r, tt.sitePrefix)
 			result := w.Result()
 			if tt.wantLocation != "" {
 				if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
@@ -972,34 +1000,34 @@ func getItemprops(body string) (url.Values, error) {
 		if node == nil {
 			continue
 		}
-		hasItemprop := false
-		var itempropKey string
+		var itempropName sql.NullString
 		for _, attr := range node.Attr {
 			if attr.Key == "itemprop" {
-				hasItemprop = true
-				itempropKey = attr.Val
+				itempropName = sql.NullString{
+					String: attr.Val,
+					Valid:  true,
+				}
 				break
 			}
 		}
-		if hasItemprop {
+		if itempropName.Valid {
 			attrs := make(map[string]string)
 			for _, attr := range node.Attr {
 				attrs[attr.Key] = attr.Val
 			}
 			// itemprop value reference:
 			// https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemprop#values
-			var itempropValue string
 			switch node.DataAtom {
 			case atom.Meta:
-				itempropValue = attrs["content"]
+				itemprops.Add(itempropName.String, attrs["content"])
 			case atom.Audio, atom.Embed, atom.Iframe, atom.Img, atom.Source, atom.Track, atom.Video:
-				itempropValue = attrs["src"]
+				itemprops.Add(itempropName.String, attrs["src"])
 			case atom.A, atom.Area, atom.Link:
-				itempropValue = attrs["href"]
+				itemprops.Add(itempropName.String, attrs["href"])
 			case atom.Object:
-				itempropValue = attrs["data"]
+				itemprops.Add(itempropName.String, attrs["data"])
 			case atom.Data, atom.Meter, atom.Input:
-				itempropValue = attrs["value"]
+				itemprops.Add(itempropName.String, attrs["value"])
 			default:
 				var textContent strings.Builder
 				var childNode *html.Node
@@ -1014,23 +1042,10 @@ func getItemprops(body string) (url.Values, error) {
 					}
 					childNodes = append(childNodes, childNode.NextSibling, childNode.FirstChild)
 				}
-				itempropValue = strings.TrimSpace(textContent.String())
+				itemprops.Add(itempropName.String, strings.TrimSpace(textContent.String()))
 			}
-			itemprops.Add(itempropKey, itempropValue)
 		}
 		nodes = append(nodes, node.NextSibling, node.FirstChild)
 	}
 	return itemprops, nil
-}
-
-func cloneMap[M ~map[K]V, K comparable, V any](m M) M {
-	// Preserve nil in case it matters.
-	if m == nil {
-		return nil
-	}
-	r := make(M, len(m))
-	for k, v := range m {
-		r[k] = v
-	}
-	return r
 }
