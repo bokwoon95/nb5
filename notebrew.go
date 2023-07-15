@@ -669,11 +669,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if response.ResourceAlreadyExists != "" ||
-				len(response.Errors) > 0 ||
-				len(response.FilePathErrors) > 0 ||
-				len(response.FolderPathErrors) > 0 ||
-				len(response.FileNameErrors) > 0 {
+			if response.ResourceAlreadyExists != "" || len(response.Errors) > 0 || len(response.FilePathErrors) > 0 || len(response.FolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
