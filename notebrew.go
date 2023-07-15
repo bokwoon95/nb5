@@ -601,8 +601,8 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		FileName   string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		Errors                []string `json:"errors,omitempty"`
 		ResourceAlreadyExists string   `json:"resource_already_exists,omitempty"`
+		Errors                []string `json:"errors,omitempty"`
 		FilePath              string   `json:"file_path,omitempty"`
 		FilePathErrors        []string `json:"file_path_errors,omitempty"`
 		FolderPath            string   `json:"folder_path,omitempty"`
@@ -779,10 +779,10 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				writeResponse(w, r, response)
 				return
 			}
-			if tail == "" || (!strings.Contains(tail, "/") && filepath.Ext(tail) == "") {
+			if tail == "" || (!strings.Contains(tail, "/") && path.Ext(tail) == "") {
 				filePath += "/" + strings.ToLower(ulid.Make().String()) + ".md"
 			}
-			if filepath.Ext(filePath) != ".md" {
+			if path.Ext(filePath) != ".md" {
 				const errmsg = "invalid extension (must end in .md)"
 				if filePathProvidedByUser {
 					response.FilePathErrors = append(response.FilePathErrors, errmsg)
@@ -793,7 +793,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				return
 			}
 		case "pages", "templates":
-			if filepath.Ext(filePath) != ".html" {
+			if path.Ext(filePath) != ".html" {
 				const errmsg = "invalid extension (must end in .html)"
 				if filePathProvidedByUser {
 					response.FilePathErrors = append(response.FilePathErrors, errmsg)
@@ -804,9 +804,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				return
 			}
 		case "assets":
-			ext := filepath.Ext(filePath)
+			ext := path.Ext(filePath)
 			if ext == ".gz" {
-				ext = filepath.Ext(strings.TrimSuffix(filePath, ext))
+				ext = path.Ext(strings.TrimSuffix(filePath, ext))
 			}
 			allowedExts := []string{
 				".html", ".css", ".js", ".md", ".txt",
@@ -842,7 +842,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 
-		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, filepath.Dir(filePath)))
+		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, path.Dir(filePath)))
 		if err != nil {
 			errmsg := err.Error()
 			if errors.Is(err, fs.ErrNotExist) {

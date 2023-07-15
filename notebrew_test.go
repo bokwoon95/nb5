@@ -299,13 +299,14 @@ func Test_POST_create(t *testing.T) {
 		FileName   string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		Errors           []string `json:"errors,omitempty"`
-		FolderPath       string   `json:"folder_path,omitempty"`
-		FolderPathErrors []string `json:"folder_path_errors,omitempty"`
-		FileName         string   `json:"file_name,omitempty"`
-		FileNameErrors   []string `json:"file_name_errors,omitempty"`
-		FilePath         string   `json:"file_path,omitempty"`
-		FilePathErrors   []string `json:"file_path_errors,omitempty"`
+		ResourceAlreadyExists string   `json:"resource_already_exists,omitempty"`
+		Errors                []string `json:"errors,omitempty"`
+		FolderPath            string   `json:"folder_path,omitempty"`
+		FolderPathErrors      []string `json:"folder_path_errors,omitempty"`
+		FileName              string   `json:"file_name,omitempty"`
+		FileNameErrors        []string `json:"file_name_errors,omitempty"`
+		FilePath              string   `json:"file_path,omitempty"`
+		FilePathErrors        []string `json:"file_path_errors,omitempty"`
 	}
 	type TestTable struct {
 		description   string   // test description
@@ -541,6 +542,9 @@ func Test_POST_create(t *testing.T) {
 	}, {
 		description: "file already exists",
 		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar": &fstest.MapFile{
+				Mode: fs.ModeDir,
+			},
 			"assets/foo/bar/baz.js": &fstest.MapFile{
 				Data: []byte(`"use strict";`),
 			},
@@ -551,20 +555,283 @@ func Test_POST_create(t *testing.T) {
 			FileName:   "baz.js",
 		},
 		response: Response{
-			FilePath: "assets/foo/bar/baz.js",
-			FilePathErrors: []string{
-				"parent folder does not exist",
-			},
+			FilePath:   "assets/foo/bar/baz.js",
 			FolderPath: "assets/foo/bar",
-			FolderPathErrors: []string{
-				"parent folder does not exist",
-			},
-			FileName: "baz.js",
+			FileName:   "baz.js",
 		},
 	}}
 
 	for _, tt := range tests {
 		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Parallel()
+
+			// === JSON, file_path === //
+			nbrew := &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			b, err := json.Marshal(Request{
+				FilePath: tt.request.FilePath,
+			})
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r, err := http.NewRequest("POST", "", bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/json"},
+				"Accept":       []string{"application/json"},
+			}
+			w := httptest.NewRecorder()
+			nbrew.create(w, r, tt.sitePrefix)
+			result := w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			gotResponse := Response{}
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			wantResponse := Response{
+				Errors:         tt.response.Errors,
+				FilePath:       tt.response.FilePath,
+				FilePathErrors: tt.response.FilePathErrors,
+			}
+			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+				t.Fatal(testutil.Callers(), diff)
+			}
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Fatal(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Fatal(testutil.Callers(), err)
+					}
+				}
+			}
+
+			// === JSON, folder_path + file_name === //
+			nbrew = &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			b, err = json.Marshal(Request{
+				FolderPath: tt.request.FolderPath,
+				FileName:   tt.request.FileName,
+			})
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r, err = http.NewRequest("POST", "", bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/json"},
+				"Accept":       []string{"application/json"},
+			}
+			w = httptest.NewRecorder()
+			nbrew.create(w, r, tt.sitePrefix)
+			result = w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			gotResponse = Response{}
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			wantResponse = Response{
+				Errors:           tt.response.Errors,
+				FolderPath:       tt.response.FolderPath,
+				FolderPathErrors: tt.response.FolderPathErrors,
+				FileName:         tt.response.FileName,
+				FileNameErrors:   tt.response.FileNameErrors,
+			}
+			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+				t.Error(testutil.Callers(), diff)
+			}
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Fatal(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Fatal(testutil.Callers(), err)
+					}
+				}
+			}
+
+			// === HTML form, file_path === //
+			nbrew = &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			values := url.Values{
+				"file_path": []string{tt.request.FilePath},
+			}
+			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/x-www-form-urlencoded"},
+			}
+			w = httptest.NewRecorder()
+			nbrew.create(w, r, tt.sitePrefix)
+			result = w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			if tt.wantLocation != "" {
+				if diff := testutil.Diff(result.Header.Get("Location"), tt.wantLocation); diff != "" {
+					t.Fatal(testutil.Callers(), diff)
+				}
+			} else {
+				r, err := http.NewRequest("GET", "", nil)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				var b strings.Builder
+				for _, cookie := range result.Cookies() {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					c := &http.Cookie{
+						Name:  cookie.Name,
+						Value: cookie.Value,
+					}
+					b.WriteString(c.String())
+				}
+				r.Header.Set("Cookie", b.String())
+				var gotResponse Response
+				ok, err := nbrew.getSession(r, "flash_session", &gotResponse)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				if !ok {
+					t.Fatal(testutil.Callers(), "no session set")
+				}
+				wantResponse := Response{
+					Errors:         tt.response.Errors,
+					FilePath:       tt.response.FilePath,
+					FilePathErrors: tt.response.FilePathErrors,
+				}
+				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+					t.Fatal(testutil.Callers(), diff)
+				}
+			}
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Fatal(testutil.Callers(), err)
+					}
+				}
+			}
+
+			// === HTML form, folder_path + file_name === //
+			nbrew = &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			values = url.Values{
+				"folder_path": []string{tt.request.FolderPath},
+				"file_name":   []string{tt.request.FileName},
+			}
+			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/x-www-form-urlencoded"},
+			}
+			w = httptest.NewRecorder()
+			nbrew.create(w, r, tt.sitePrefix)
+			result = w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			if tt.wantLocation != "" {
+				if diff := testutil.Diff(result.Header.Get("Location"), tt.wantLocation); diff != "" {
+					t.Error(testutil.Callers(), diff)
+				}
+			} else {
+				r, err = http.NewRequest("GET", "", nil)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				var b strings.Builder
+				for _, cookie := range result.Cookies() {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					c := &http.Cookie{
+						Name:  cookie.Name,
+						Value: cookie.Value,
+					}
+					b.WriteString(c.String())
+				}
+				r.Header.Set("Cookie", b.String())
+				gotResponse = Response{}
+				ok, err := nbrew.getSession(r, "flash_session", &gotResponse)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				if !ok {
+					t.Fatal(testutil.Callers(), "no session set")
+				}
+				wantResponse = Response{
+					Errors:           tt.response.Errors,
+					FolderPath:       tt.response.FolderPath,
+					FolderPathErrors: tt.response.FolderPathErrors,
+					FileName:         tt.response.FileName,
+					FileNameErrors:   tt.response.FileNameErrors,
+				}
+				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+					t.Fatal(testutil.Callers(), diff)
+				}
+			}
+			if tt.testFilePath != "" {
+				_, err = fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Fatal(testutil.Callers(), err)
+					}
+				}
+			}
+
+		})
+
 		t.Run(tt.description+" (json) (file_path)", func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
