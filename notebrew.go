@@ -813,7 +813,6 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				".jpeg", ".jpg", ".png", ".gif", ".svg", ".ico",
 				".eof", ".ttf", ".woff", ".woff2",
 				".csv", ".tsv", ".json", ".xml", ".toml", ".yaml", ".yml",
-				".gz",
 			}
 			match := false
 			for _, allowedExt := range allowedExts {

@@ -511,13 +511,32 @@ func Test_POST_create(t *testing.T) {
 		response: Response{
 			FilePath: "assets/foo/bar/baz.sh",
 			FilePathErrors: []string{
-				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml, .gz)",
+				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
 			FolderPath: "assets/foo/bar",
 			FileName:   "baz.sh",
 			FileNameErrors: []string{
-				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml, .gz)",
+				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
+		},
+	}, {
+		description: "parent folder doesnt exist",
+		testFS:      &TestFS{fstest.MapFS{}},
+		request: Request{
+			FilePath:   "assets/foo/bar/baz.js",
+			FolderPath: "assets/foo/bar",
+			FileName:   "baz.js",
+		},
+		response: Response{
+			FilePath: "assets/foo/bar/baz.js",
+			FilePathErrors: []string{
+				"parent folder does not exist",
+			},
+			FolderPath: "assets/foo/bar",
+			FolderPathErrors: []string{
+				"parent folder does not exist",
+			},
+			FileName: "baz.js",
 		},
 	}}
 
