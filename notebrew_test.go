@@ -134,13 +134,13 @@ func Test_validatePath(t *testing.T) {
 		path:        "FOLDER/COM1/cOn/lpT9",
 		wantErrs: []string{
 			"no uppercase letters [A-Z] allowed",
-			"forbidden name(s): COM1, cOn, lpT9",
+			`forbidden name(s): "COM1", "cOn", "lpT9"`,
 		},
 	}, {
 		description: "dot",
 		path:        "foo/../bar././baz/.",
 		wantErrs: []string{
-			"name(s) cannot end in dot: .., bar., .",
+			`name(s) cannot end in dot: "..", "bar.", "."`,
 		},
 	}, {
 		description: "ok",

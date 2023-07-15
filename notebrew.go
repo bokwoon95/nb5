@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template/parse"
@@ -567,13 +568,13 @@ func validatePath(path string) (errmsgs []string) {
 		if len(name) > 0 && name[len(name)-1] == '.' {
 			if _, ok := writtenName[name]; !ok {
 				writtenName[name] = struct{}{}
-				dotSuffixNames = append(dotSuffixNames, name)
+				dotSuffixNames = append(dotSuffixNames, strconv.Quote(name))
 			}
 		}
 		if _, ok := forbiddenNameSet[strings.ToLower(name)]; ok {
 			if _, ok := writtenName[name]; !ok {
 				writtenName[name] = struct{}{}
-				forbiddenNames = append(forbiddenNames, name)
+				forbiddenNames = append(forbiddenNames, strconv.Quote(name))
 			}
 		}
 		name, tail, _ = strings.Cut(tail, "/")
