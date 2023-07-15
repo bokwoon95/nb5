@@ -656,7 +656,6 @@ func Test_POST_create(t *testing.T) {
 			}
 			r.Header = http.Header{
 				"Content-Type": []string{"application/x-www-form-urlencoded"},
-				"Accept":       []string{"text/html"},
 			}
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, tt.sitePrefix)
@@ -668,44 +667,49 @@ func Test_POST_create(t *testing.T) {
 				if diff := testutil.Diff(result.Header.Get("Location"), tt.wantLocation); diff != "" {
 					t.Error(testutil.Callers(), diff)
 				}
-				if tt.testFilePath != "" {
-					_, err := fs.Stat(nbrew.FS, tt.testFilePath)
-					if err != nil {
-						if errors.Is(err, fs.ErrNotExist) {
-							t.Errorf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
-						} else {
-							t.Error(testutil.Callers(), err)
-						}
+			} else {
+				r, err := http.NewRequest("GET", "", nil)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				var b strings.Builder
+				for _, cookie := range result.Cookies() {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					c := &http.Cookie{
+						Name:  cookie.Name,
+						Value: cookie.Value,
+					}
+					b.WriteString(c.String())
+				}
+				r.Header.Set("Cookie", b.String())
+				var gotResponse Response
+				ok, err := nbrew.getSession(r, "flash_session", &gotResponse)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				if !ok {
+					t.Fatal(testutil.Callers(), "no session set")
+				}
+				wantResponse := Response{
+					Errors:         tt.response.Errors,
+					FilePath:       tt.response.FilePath,
+					FilePathErrors: tt.response.FilePathErrors,
+				}
+				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+					t.Error(testutil.Callers(), diff)
+				}
+			}
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Errorf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Error(testutil.Callers(), err)
 					}
 				}
-				return
-			} else {
-			}
-			// TODO: we never actually get http.StatusOK, even in the case of
-			// an error we are redirected back to an empty url so we have to
-			// assert that a session token was set instead and that session
-			// should be the response we are looking for.
-			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
-				t.Fatal(testutil.Callers(), diff, w.Body.String())
-			}
-			itemprops, err := getItemprops(w.Body.String())
-			if err != nil {
-				t.Fatal(testutil.Callers(), err)
-			}
-			gotResponse := Response{
-				FilePath:         itemprops.Get("file_path"),
-				FilePathErrors:   itemprops["file_path_errors"],
-				FolderPath:       itemprops.Get("folder_path"),
-				FolderPathErrors: itemprops["folder_path_errors"],
-				FileName:         itemprops.Get("file_name"),
-				FileNameErrors:   itemprops["file_name_errors"],
-			}
-			wantResponse := Response{
-				FilePath:       tt.response.FilePath,
-				FilePathErrors: tt.response.FilePathErrors,
-			}
-			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
-				t.Error(testutil.Callers(), diff)
 			}
 		})
 		t.Run(tt.description+" (html form) (folder_path and file_path)", func(t *testing.T) {
@@ -729,46 +733,62 @@ func Test_POST_create(t *testing.T) {
 			}
 			r.Header = http.Header{
 				"Content-Type": []string{"application/x-www-form-urlencoded"},
-				"Accept":       []string{"text/html"},
 			}
 			w := httptest.NewRecorder()
 			nbrew.create(w, r, tt.sitePrefix)
 			result := w.Result()
-			if tt.wantLocation != "" {
-				if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
-					t.Fatal(testutil.Callers(), diff, w.Body.String())
-				}
-				// TODO: make sure the Location header matches tt.wantLocation.
-				// TODO: assert that the linked file exists in the filesystem.
-				return
-			}
-			// TODO: we never actually get http.StatusOK, even in the case of
-			// an error we are redirected back to an empty url so we have to
-			// assert that a session token was set instead and that session
-			// should be the response we are looking for.
-			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
+			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
-			itemprops, err := getItemprops(w.Body.String())
-			if err != nil {
-				t.Fatal(testutil.Callers(), err)
+			if tt.wantLocation != "" {
+				if diff := testutil.Diff(result.Header.Get("Location"), tt.wantLocation); diff != "" {
+					t.Error(testutil.Callers(), diff)
+				}
+			} else {
+				r, err := http.NewRequest("GET", "", nil)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				var b strings.Builder
+				for _, cookie := range result.Cookies() {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					c := &http.Cookie{
+						Name:  cookie.Name,
+						Value: cookie.Value,
+					}
+					b.WriteString(c.String())
+				}
+				r.Header.Set("Cookie", b.String())
+				var gotResponse Response
+				ok, err := nbrew.getSession(r, "flash_session", &gotResponse)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				if !ok {
+					t.Fatal(testutil.Callers(), "no session set")
+				}
+				wantResponse := Response{
+					Errors:           tt.response.Errors,
+					FolderPath:       tt.response.FolderPath,
+					FolderPathErrors: tt.response.FolderPathErrors,
+					FileName:         tt.response.FileName,
+					FileNameErrors:   tt.response.FileNameErrors,
+				}
+				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+					t.Error(testutil.Callers(), diff)
+				}
 			}
-			gotResponse := Response{
-				FilePath:         itemprops.Get("file_path"),
-				FilePathErrors:   itemprops["file_path_errors"],
-				FolderPath:       itemprops.Get("folder_path"),
-				FolderPathErrors: itemprops["folder_path_errors"],
-				FileName:         itemprops.Get("file_name"),
-				FileNameErrors:   itemprops["file_name_errors"],
-			}
-			wantResponse := Response{
-				FolderPath:       tt.response.FolderPath,
-				FolderPathErrors: tt.response.FolderPathErrors,
-				FileName:         tt.response.FileName,
-				FileNameErrors:   tt.response.FileNameErrors,
-			}
-			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
-				t.Error(testutil.Callers(), diff)
+			if tt.testFilePath != "" {
+				_, err := fs.Stat(nbrew.FS, tt.testFilePath)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Errorf(testutil.Callers()+": %s: file was not created", tt.testFilePath)
+					} else {
+						t.Error(testutil.Callers(), err)
+					}
+				}
 			}
 		})
 	}
