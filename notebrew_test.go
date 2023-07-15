@@ -138,9 +138,9 @@ func Test_validatePath(t *testing.T) {
 		},
 	}, {
 		description: "dot",
-		path:        "foo/bar/./baz",
+		path:        "foo/../bar././baz/.",
 		wantErrs: []string{
-			"name(s) cannot end in dot: .",
+			"name(s) cannot end in dot: .., bar., .",
 		},
 	}, {
 		description: "ok",
