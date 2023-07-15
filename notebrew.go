@@ -605,14 +605,14 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		FileName   string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		ResourceAlreadyExists string   `json:"resource_already_exists,omitempty"`
-		Errors                []string `json:"errors,omitempty"`
-		FilePath              string   `json:"file_path,omitempty"`
-		FilePathErrors        []string `json:"file_path_errors,omitempty"`
-		FolderPath            string   `json:"folder_path,omitempty"`
-		FolderPathErrors      []string `json:"folder_path_errors,omitempty"`
-		FileName              string   `json:"file_name,omitempty"`
-		FileNameErrors        []string `json:"file_name_errors,omitempty"`
+		FileAlreadyExists string   `json:"file_already_exists,omitempty"`
+		Errors            []string `json:"errors,omitempty"`
+		FilePath          string   `json:"file_path,omitempty"`
+		FilePathErrors    []string `json:"file_path_errors,omitempty"`
+		FolderPath        string   `json:"folder_path,omitempty"`
+		FolderPathErrors  []string `json:"folder_path_errors,omitempty"`
+		FileName          string   `json:"file_name,omitempty"`
+		FileNameErrors    []string `json:"file_name_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -673,7 +673,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if response.ResourceAlreadyExists != "" || len(response.Errors) > 0 || len(response.FilePathErrors) > 0 || len(response.FolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
+			if response.FileAlreadyExists != "" || len(response.Errors) > 0 || len(response.FilePathErrors) > 0 || len(response.FolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -867,9 +867,9 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		}
 		if err == nil {
 			if nbrew.MultisiteMode == "subdirectory" {
-				response.ResourceAlreadyExists = "/" + path.Join(sitePrefix, "admin", filePath)
+				response.FileAlreadyExists = "/" + path.Join(sitePrefix, "admin", filePath)
 			} else {
-				response.ResourceAlreadyExists = "/" + path.Join("admin", filePath)
+				response.FileAlreadyExists = "/" + path.Join("admin", filePath)
 			}
 			writeResponse(w, r, response)
 			return

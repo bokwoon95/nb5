@@ -299,14 +299,14 @@ func Test_POST_create(t *testing.T) {
 		FileName   string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		ResourceAlreadyExists string   `json:"resource_already_exists,omitempty"`
-		Errors                []string `json:"errors,omitempty"`
-		FolderPath            string   `json:"folder_path,omitempty"`
-		FolderPathErrors      []string `json:"folder_path_errors,omitempty"`
-		FileName              string   `json:"file_name,omitempty"`
-		FileNameErrors        []string `json:"file_name_errors,omitempty"`
-		FilePath              string   `json:"file_path,omitempty"`
-		FilePathErrors        []string `json:"file_path_errors,omitempty"`
+		FileAlreadyExists string   `json:"file_already_exists,omitempty"`
+		Errors            []string `json:"errors,omitempty"`
+		FolderPath        string   `json:"folder_path,omitempty"`
+		FolderPathErrors  []string `json:"folder_path_errors,omitempty"`
+		FileName          string   `json:"file_name,omitempty"`
+		FileNameErrors    []string `json:"file_name_errors,omitempty"`
+		FilePath          string   `json:"file_path,omitempty"`
+		FilePathErrors    []string `json:"file_path_errors,omitempty"`
 	}
 	type TestTable struct {
 		description          string   // test description
@@ -551,10 +551,10 @@ func Test_POST_create(t *testing.T) {
 			FileName:   "baz.js",
 		},
 		response: Response{
-			ResourceAlreadyExists: "/admin/assets/foo/bar/baz.js",
-			FilePath:              "assets/foo/bar/baz.js",
-			FolderPath:            "assets/foo/bar",
-			FileName:              "baz.js",
+			FileAlreadyExists: "/admin/assets/foo/bar/baz.js",
+			FilePath:          "assets/foo/bar/baz.js",
+			FolderPath:        "assets/foo/bar",
+			FileName:          "baz.js",
 		},
 		assertFilePathExists: "assets/foo/bar/baz.js",
 	}, {
@@ -571,10 +571,10 @@ func Test_POST_create(t *testing.T) {
 			FileName:   "baz.js",
 		},
 		response: Response{
-			ResourceAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
-			FilePath:              "assets/foo/bar/baz.js",
-			FolderPath:            "assets/foo/bar",
-			FileName:              "baz.js",
+			FileAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
+			FilePath:          "assets/foo/bar/baz.js",
+			FolderPath:        "assets/foo/bar",
+			FileName:          "baz.js",
 		},
 		assertFilePathExists: "~bokwoon/assets/foo/bar/baz.js",
 	}, {
@@ -636,10 +636,10 @@ func Test_POST_create(t *testing.T) {
 				t.Fatal(testutil.Callers(), err)
 			}
 			wantResponse := Response{
-				ResourceAlreadyExists: tt.response.ResourceAlreadyExists,
-				Errors:                tt.response.Errors,
-				FilePath:              tt.response.FilePath,
-				FilePathErrors:        tt.response.FilePathErrors,
+				FileAlreadyExists: tt.response.FileAlreadyExists,
+				Errors:            tt.response.Errors,
+				FilePath:          tt.response.FilePath,
+				FilePathErrors:    tt.response.FilePathErrors,
 			}
 			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Fatal(testutil.Callers(), diff)
@@ -691,12 +691,12 @@ func Test_POST_create(t *testing.T) {
 				t.Fatal(testutil.Callers(), err)
 			}
 			wantResponse = Response{
-				ResourceAlreadyExists: tt.response.ResourceAlreadyExists,
-				Errors:                tt.response.Errors,
-				FolderPath:            tt.response.FolderPath,
-				FolderPathErrors:      tt.response.FolderPathErrors,
-				FileName:              tt.response.FileName,
-				FileNameErrors:        tt.response.FileNameErrors,
+				FileAlreadyExists: tt.response.FileAlreadyExists,
+				Errors:            tt.response.Errors,
+				FolderPath:        tt.response.FolderPath,
+				FolderPathErrors:  tt.response.FolderPathErrors,
+				FileName:          tt.response.FileName,
+				FileNameErrors:    tt.response.FileNameErrors,
 			}
 			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
@@ -773,10 +773,10 @@ func Test_POST_create(t *testing.T) {
 					t.Fatal(testutil.Callers(), "no session set")
 				}
 				wantResponse := Response{
-					ResourceAlreadyExists: tt.response.ResourceAlreadyExists,
-					Errors:                tt.response.Errors,
-					FilePath:              tt.response.FilePath,
-					FilePathErrors:        tt.response.FilePathErrors,
+					FileAlreadyExists: tt.response.FileAlreadyExists,
+					Errors:            tt.response.Errors,
+					FilePath:          tt.response.FilePath,
+					FilePathErrors:    tt.response.FilePathErrors,
 				}
 				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 					t.Fatal(testutil.Callers(), diff)
@@ -855,12 +855,12 @@ func Test_POST_create(t *testing.T) {
 					t.Fatal(testutil.Callers(), "no session set")
 				}
 				wantResponse = Response{
-					ResourceAlreadyExists: tt.response.ResourceAlreadyExists,
-					Errors:                tt.response.Errors,
-					FolderPath:            tt.response.FolderPath,
-					FolderPathErrors:      tt.response.FolderPathErrors,
-					FileName:              tt.response.FileName,
-					FileNameErrors:        tt.response.FileNameErrors,
+					FileAlreadyExists: tt.response.FileAlreadyExists,
+					Errors:            tt.response.Errors,
+					FolderPath:        tt.response.FolderPath,
+					FolderPathErrors:  tt.response.FolderPathErrors,
+					FileName:          tt.response.FileName,
+					FileNameErrors:    tt.response.FileNameErrors,
 				}
 				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 					t.Fatal(testutil.Callers(), diff)

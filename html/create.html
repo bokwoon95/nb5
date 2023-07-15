@@ -6,10 +6,10 @@
 <link rel="stylesheet" href="/admin/static/styles.css">
 <title>Create file</title>
 <form method="post">
-    {{- if .ResourceAlreadyExists }}
+    {{- if .FileAlreadyExists }}
     <div>
-        Resource already exists, click the link ➡
-        <a href="{{ .ResourceAlreadyExists }}" itemprop="resource_already_exists">{{ .ResourceAlreadyExists }}</a>
+        File already exists, click the link ➡
+        <a href="{{ .FileAlreadyExists }}" itemprop="file_already_exists">{{ .FileAlreadyExists }}</a>
     </div>
     {{- end }}
     {{- if .Errors }}
