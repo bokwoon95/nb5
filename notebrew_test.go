@@ -335,7 +335,7 @@ func Test_POST_create(t *testing.T) {
 		request              Request  // request payload
 		response             Response // response payload
 		wantLocation         string   // HTTP response Location header
-		assertFilePathExists string   // file path that should be asserted for existence if response had no errors
+		assertFilePathExists string   // file path that should be asserted for existence if response has no errors
 	}
 
 	tests := []TestTable{{
