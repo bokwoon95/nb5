@@ -538,6 +538,29 @@ func Test_POST_create(t *testing.T) {
 			},
 			FileName: "baz.js",
 		},
+	}, {
+		description: "file already exists",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar/baz.js": &fstest.MapFile{
+				Data: []byte(`"use strict";`),
+			},
+		}},
+		request: Request{
+			FilePath:   "assets/foo/bar/baz.js",
+			FolderPath: "assets/foo/bar",
+			FileName:   "baz.js",
+		},
+		response: Response{
+			FilePath: "assets/foo/bar/baz.js",
+			FilePathErrors: []string{
+				"parent folder does not exist",
+			},
+			FolderPath: "assets/foo/bar",
+			FolderPathErrors: []string{
+				"parent folder does not exist",
+			},
+			FileName: "baz.js",
+		},
 	}}
 
 	for _, tt := range tests {
