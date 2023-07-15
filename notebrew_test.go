@@ -193,7 +193,7 @@ func Test_GET_create(t *testing.T) {
 			"file_path": []string{"foo/bar/baz.md"},
 		},
 	}, {
-		description: "session cookie",
+		description: "folder_path + file_name errors",
 		seedQueries: []sq.CustomQuery{{
 			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
 			Values: []any{
@@ -228,6 +228,25 @@ func Test_GET_create(t *testing.T) {
 			"file_name_errors": []string{
 				"forbidden characters: #$%&",
 			},
+		},
+	}, {
+		description: "file already exists",
+		seedQueries: []sq.CustomQuery{{
+			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
+			Values: []any{
+				sessionTokenHash,
+				sq.JSONValue(map[string]any{
+					"file_already_exists": "/admin/assets/foo/bar/baz.js",
+					"file_path":           "assets/foo/bar/baz.js",
+				}),
+			},
+		}},
+		header: http.Header{
+			"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken), "0")},
+		},
+		wantItemprops: url.Values{
+			"file_already_exists": []string{"/admin/assets/foo/bar/baz.js"},
+			"file_path":           []string{"assets/foo/bar/baz.js"},
 		},
 	}}
 
@@ -1084,6 +1103,14 @@ func hashToken(token []byte) []byte {
 	return tokenHash
 }
 
+// getItemprops trawls through a HTML body and extracts all itemprop names and
+// values. The name of an itemprop is whatever is in the itemprop attribute,
+// while the value of an itemprop is either the content attribute, src
+// attribute, href attribute, data attribute, value attribute or textContent of
+// an element (as defined in
+// https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemprop#values).
+// An itemprop name may appear multiple times, in which case its value is
+// aggregated into a list.
 func getItemprops(body string) (url.Values, error) {
 	root, err := html.Parse(strings.NewReader(body))
 	if err != nil {
