@@ -928,7 +928,168 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 
 	switch r.Method {
 	case "GET":
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+			return
+		}
+		var response Response
+		ok, err := nbrew.getSession(r, "flash_session", &response)
+		if err != nil {
+			logger.Error(err.Error())
+		}
+		if !ok {
+			response.ParentFolderPath = r.Form.Get("parent_folder_path")
+			response.FolderName = r.Form.Get("folder_name")
+			response.FolderPath = r.Form.Get("folder_path")
+		}
+		nbrew.clearSession(w, r, "flash_session")
+		tmpl, err := template.ParseFS(rootFS, "html/mkdir_all.html")
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		buf := bufPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufPool.Put(buf)
+		err = tmpl.Execute(buf, &response)
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		buf.WriteTo(w)
 	case "POST":
+		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
+			accept, _, _ := mime.ParseMediaType(r.Header.Get("Accept"))
+			if accept == "application/json" {
+				b, err := json.Marshal(&response)
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				w.Write(b)
+				return
+			}
+			if response.FolderAlreadyExists != "" || len(response.Errors) > 0 || len(response.FolderPathErrors) > 0 || len(response.ParentFolderPathErrors) > 0 || len(response.FolderNameErrors) > 0 {
+				err := nbrew.setSession(w, r, &response, &http.Cookie{
+					Path:     r.URL.Path,
+					Name:     "flash_session",
+					Secure:   nbrew.Scheme == "https://",
+					HttpOnly: true,
+					SameSite: http.SameSiteLaxMode,
+				})
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+				return
+			}
+			folderPath := response.FolderPath
+			if folderPath == "" {
+				folderPath = path.Join(response.ParentFolderPath, response.FolderName)
+			}
+			var redirectURL string
+			if nbrew.MultisiteMode == "subdirectory" {
+				redirectURL = "/" + path.Join(sitePrefix, "admin", folderPath)
+			} else {
+				redirectURL = "/" + path.Join("admin", folderPath)
+			}
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+		}
+
+		var request Request
+		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if contentType == "application/json" {
+			err := json.NewDecoder(r.Body).Decode(&request)
+			if err != nil {
+				var syntaxErr *json.SyntaxError
+				if errors.As(err, &syntaxErr) {
+					http.Error(w, "400 Bad Request: invalid JSON", http.StatusBadRequest)
+					return
+				}
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+				return
+			}
+			request.ParentFolderPath = r.Form.Get("parent_folder_path")
+			request.FolderName = r.Form.Get("folder_name")
+			request.FolderPath = r.Form.Get("folder_path")
+		}
+
+		if request.FolderPath == "" && request.ParentFolderPath == "" && request.FolderName == "" {
+			writeResponse(w, r, Response{
+				Errors: []string{"missing arguments"},
+			})
+			return
+		}
+
+		// folderPathProvidedByUser tracks whether the user provided folder_path or
+		// parent_folder_path and folder_name.
+		var folderPathProvidedByUser bool
+
+		// folderPath is the path of the file to create, obtained from either
+		// folder_path or path.Join(parent_folder_path, folder_name).
+		var folderPath string
+
+		var response Response
+		if request.FolderPath != "" {
+			folderPathProvidedByUser = true
+			folderPath = request.FolderPath
+			response.FolderPath = request.FolderPath
+			response.FolderPathErrors = validatePath(request.FolderPath)
+			if len(response.FolderPathErrors) > 0 {
+				writeResponse(w, r, response)
+				return
+			}
+		} else {
+			folderPathProvidedByUser = false
+			folderPath = path.Join(request.ParentFolderPath, request.FolderName)
+			response.ParentFolderPath = request.ParentFolderPath
+			response.FolderName = request.FolderName
+			response.ParentFolderPathErrors = validatePath(request.ParentFolderPath)
+			response.FolderNameErrors = validateName(request.FolderName)
+			if len(response.ParentFolderPathErrors) > 0 || len(response.FolderNameErrors) > 0 {
+				writeResponse(w, r, response)
+				return
+			}
+		}
+
+		head, tail, _ := strings.Cut(folderPath, "/")
+		switch head {
+		case "posts", "notes":
+			if strings.Contains(tail, "/") {
+				const errmsg = "forbidden from creating a folder here"
+				if folderPathProvidedByUser {
+					response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+				} else {
+					response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
+				}
+				writeResponse(w, r, response)
+				return
+			}
+		case "pages", "templates", "assets":
+			break
+		default:
+			const errmsg = "path has to start with posts, notes, pages, templates or assets"
+			if folderPathProvidedByUser {
+				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+			} else {
+				response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
+			}
+			writeResponse(w, r, response)
+			return
+		}
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
