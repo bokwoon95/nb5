@@ -22,7 +22,7 @@
     {{- if .ParentFolderPath }}
     <input type="hidden" name="parent_folder_path" value="{{ .ParentFolderPath }}" itemprop="parent_folder_path">
     <div>
-        <div>Creating file in folder: {{ .ParentFolderPath }}</div>
+        <div>Parent folder: {{ .ParentFolderPath }}</div>
         {{- if .ParentFolderPathErrors }}
         <ul>
             {{- range $error := .ParentFolderPathErrors }}
@@ -47,7 +47,7 @@
     <div>
         <label for="file_path" class="db">File path</label>
         <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FilePath }}" required itemprop="file_path">
+        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FilePath }}" required itemprop="file_path">
         {{- if .FilePathErrors }}
         <ul>
             {{- range $error := .FilePathErrors }}

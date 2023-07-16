@@ -4,5 +4,57 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/admin/static/lib/tachyons.min.css.gz">
 <link rel="stylesheet" href="/admin/static/styles.css">
-<title>Mkdir</title>
-<h1 class="f3">Mkdir</h1>
+<title>Create folder</title>
+<form method="post">
+    {{- if .FolderAlreadyExists }}
+    <div>
+        Folder already exists, click the link ➡
+        <a href="{{ .FolderAlreadyExists }}" itemprop="folder_already_exists">{{ .FolderAlreadyExists }}</a>
+    </div>
+    {{- end }}
+    {{- if .Errors }}
+    <ul>
+        {{- range $error := .Errors }}
+        <li itemprop="errors">{{ $error }}</li>
+        {{- end }}
+    </ul>
+    {{- end }}
+    {{- if .ParentFolderPath }}
+    <input type="hidden" name="parent_folder_path" value="{{ .ParentFolderPath }}" itemprop="parent_folder_path">
+    <div>
+        <div>Parent folder: {{ .ParentFolderPath }}</div>
+        {{- if .ParentFolderPathErrors }}
+        <ul>
+            {{- range $error := .ParentFolderPathErrors }}
+            <li itemprop="parent_folder_path_errors">{{ $error }}</li>
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
+    <div>
+        <label for="folder_name" class="db">Folder name</label>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="folder_name" name="folder_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FolderName }}" required itemprop="folder_name">
+        {{- if .FolderNameErrors }}
+        <ul>
+            {{- range $error := .FolderNameErrors }}
+            <li itemprop="folder_name_errors">{{ $error }}</li>
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
+    {{- else }}
+    <div>
+        <label for="folder_path" class="db">Folder path</label>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="folder_path" name="folder_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FolderPath }}" required itemprop="folder_path">
+        {{- if .FolderPathErrors }}
+        <ul>
+            {{- range $error := .FolderPathErrors }}
+            <li itemprop="folder_path_errors">{{ $error }}</li>
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
+    {{- end }}
+</form>

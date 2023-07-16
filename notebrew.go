@@ -925,6 +925,13 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 		slog.String("sitePrefix", sitePrefix),
 	)
 	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
+
+	switch r.Method {
+	case "GET":
+	case "POST":
+	default:
+		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {
