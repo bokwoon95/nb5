@@ -93,7 +93,7 @@ type WriteFS interface {
 	// OpenWriter opens an io.WriteCloser that represents an instance of a file
 	// that can be written to. If the file doesn't exist, it should be created.
 	// If the file exists, its should be truncated.
-	OpenWriter(name string) (io.WriteCloser, error)
+	OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error)
 }
 
 // MkdirAllFS is the interface implemented by a file system that can create
@@ -127,16 +127,16 @@ type MoveFS interface {
 // OpenWriter opens an io.WriteCloser from the file system that represents an
 // instance of a file that can be written to. If the file doesn't exist, it
 // should be created.
-func OpenWriter(fsys fs.FS, name string) (io.WriteCloser, error) {
+func OpenWriter(fsys fs.FS, name string, perm fs.FileMode) (io.WriteCloser, error) {
 	if fsys, ok := fsys.(WriteFS); ok {
-		return fsys.OpenWriter(name)
+		return fsys.OpenWriter(name, perm)
 	}
 	return nil, ErrUnwritable
 }
 
 // WriteFile writes the data into a file in the file system.
-func WriteFile(fsys fs.FS, name string, data []byte) error {
-	writer, err := OpenWriter(fsys, name)
+func WriteFile(fsys fs.FS, name string, data []byte, perm fs.FileMode) error {
+	writer, err := OpenWriter(fsys, name, perm)
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func (dir dirFS) Open(name string) (fs.File, error) {
 	return os.Open(name)
 }
 
-func (dir dirFS) OpenWriter(name string) (io.WriteCloser, error) {
+func (dir dirFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
 	var err error
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open_writer", Path: name, Err: fs.ErrInvalid}
@@ -875,7 +875,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 
-		writer, err := OpenWriter(nbrew.FS, filePath)
+		writer, err := OpenWriter(nbrew.FS, path.Join(sitePrefix, filePath), 0644)
 		if err != nil {
 			if errors.Is(err, ErrUnwritable) {
 				response.Errors = append(response.Errors, err.Error())
@@ -1090,9 +1090,47 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 			writeResponse(w, r, response)
 			return
 		}
+
+		fileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, folderPath))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err == nil {
+			if fileInfo.IsDir() {
+				if nbrew.MultisiteMode == "subdirectory" {
+					response.FolderAlreadyExists = "/" + path.Join(sitePrefix, "admin", folderPath)
+				} else {
+					response.FolderAlreadyExists = "/" + path.Join("admin", folderPath)
+				}
+			} else {
+				const errmsg = "file with the same name already exists"
+				if folderPathProvidedByUser {
+					response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+				} else {
+					response.FolderNameErrors = append(response.FolderNameErrors, errmsg)
+				}
+			}
+			writeResponse(w, r, response)
+			return
+		}
+
+		err = MkdirAll(nbrew.FS, path.Join(sitePrefix, folderPath), 0755)
+		if err != nil {
+			if errors.Is(err, ErrUnwritable) {
+				response.Errors = append(response.Errors, err.Error())
+				writeResponse(w, r, response)
+				return
+			}
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
+
 }
 
 func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {

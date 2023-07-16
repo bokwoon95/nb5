@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -613,6 +614,25 @@ func Test_POST_create(t *testing.T) {
 		},
 		wantLocation:         "/admin/assets/foo/bar/baz.js",
 		assertFilePathExists: "assets/foo/bar/baz.js",
+	}, {
+		description: "file created successfully (with sitePrefix)",
+		testFS: &TestFS{fstest.MapFS{
+			"~bokwoon/assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		multisiteMode: "subdirectory",
+		sitePrefix:    "~bokwoon",
+		request: Request{
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
+		},
+		response: Response{
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
+		},
+		wantLocation:         "/~bokwoon/admin/assets/foo/bar/baz.js",
+		assertFilePathExists: "~bokwoon/assets/foo/bar/baz.js",
 	}}
 
 	for _, tt := range tests {
@@ -667,7 +687,12 @@ func Test_POST_create(t *testing.T) {
 				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFilePathExists)
+						names := make([]string, 0, len(tt.testFS.MapFS))
+						for name := range nbrew.FS.(*TestFS).MapFS {
+							names = append(names, name)
+						}
+						sort.Strings(names)
+						t.Fatalf(testutil.Callers()+"%q was not created (available files: %#v)", tt.assertFilePathExists, names)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
@@ -927,7 +952,7 @@ func (fsys *TestFS) Clone() *TestFS {
 	return &TestFS{mapFS}
 }
 
-func (fsys *TestFS) OpenWriter(name string) (io.WriteCloser, error) {
+func (fsys *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
