@@ -10,10 +10,10 @@ notes:
 /admin/create/
 - dir
 - name
-/admin/mkdir_all/
+/admin/mkdir/
 - dir
 - name
-/admin/remove_all/
+/admin/remove/
 - dir
 - name
 /admin/move/

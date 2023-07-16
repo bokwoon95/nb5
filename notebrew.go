@@ -898,21 +898,18 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 	}
 }
 
-func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePrefix string) {
+func (nbrew *Notebrew) mkdir(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	type Request struct {
-		FolderPath       string `json:"folder_path,omitempty"`
-		ParentFolderPath string `json:"parent_folder_path,omitempty"`
-		FolderName       string `json:"folder_name,omitempty"`
+		ParentFolder string `json:"parent_folder,omitempty"`
+		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		FolderAlreadyExists    string   `json:"folder_already_exists,omitempty"`
-		Errors                 []string `json:"errors,omitempty"`
-		FolderPath             string   `json:"folder_path,omitempty"`
-		FolderPathErrors       []string `json:"folder_path_errors,omitempty"`
-		ParentFolderPath       string   `json:"parent_folder_path,omitempty"`
-		ParentFolderPathErrors []string `json:"parent_folder_path_errors,omitempty"`
-		FolderName             string   `json:"folder_name,omitempty"`
-		FolderNameErrors       []string `json:"folder_name_errors,omitempty"`
+		FolderAlreadyExists string   `json:"folder_already_exists,omitempty"`
+		Errors              []string `json:"errors,omitempty"`
+		ParentFolder        string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors  []string `json:"parent_folder_errors,omitempty"`
+		Name                string   `json:"name,omitempty"`
+		NameErrors          []string `json:"name_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -939,12 +936,11 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 			logger.Error(err.Error())
 		}
 		if !ok {
-			response.ParentFolderPath = r.Form.Get("parent_folder_path")
-			response.FolderName = r.Form.Get("folder_name")
-			response.FolderPath = r.Form.Get("folder_path")
+			response.ParentFolder = r.Form.Get("parent_folder")
+			response.Name = r.Form.Get("name")
 		}
 		nbrew.clearSession(w, r, "flash_session")
-		tmpl, err := template.ParseFS(rootFS, "html/mkdir_all.html")
+		tmpl, err := template.ParseFS(rootFS, "html/mkdir.html")
 		if err != nil {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -973,7 +969,7 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 				w.Write(b)
 				return
 			}
-			if response.FolderAlreadyExists != "" || len(response.Errors) > 0 || len(response.FolderPathErrors) > 0 || len(response.ParentFolderPathErrors) > 0 || len(response.FolderNameErrors) > 0 {
+			if response.FolderAlreadyExists != "" || len(response.Errors) > 0 || len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -989,15 +985,11 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 				http.Redirect(w, r, r.URL.String(), http.StatusFound)
 				return
 			}
-			folderPath := response.FolderPath
-			if folderPath == "" {
-				folderPath = path.Join(response.ParentFolderPath, response.FolderName)
-			}
 			var redirectURL string
 			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", folderPath)
+				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
 			} else {
-				redirectURL = "/" + path.Join("admin", folderPath)
+				redirectURL = "/" + path.Join("admin", response.ParentFolder, response.Name)
 			}
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 		}
@@ -1022,76 +1014,44 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
 			}
-			request.ParentFolderPath = r.Form.Get("parent_folder_path")
-			request.FolderName = r.Form.Get("folder_name")
-			request.FolderPath = r.Form.Get("folder_path")
+			request.ParentFolder = r.Form.Get("parent_folder")
+			request.Name = r.Form.Get("name")
 		}
 
-		if request.FolderPath == "" && request.ParentFolderPath == "" && request.FolderName == "" {
+		if request.ParentFolder == "" || request.Name == "" {
 			writeResponse(w, r, Response{
 				Errors: []string{"missing arguments"},
 			})
 			return
 		}
-
-		// folderPathProvidedByUser tracks whether the user provided folder_path or
-		// parent_folder_path and folder_name.
-		var folderPathProvidedByUser bool
-
-		// folderPath is the path of the file to create, obtained from either
-		// folder_path or path.Join(parent_folder_path, folder_name).
-		var folderPath string
-
-		var response Response
-		if request.FolderPath != "" {
-			folderPathProvidedByUser = true
-			folderPath = request.FolderPath
-			response.FolderPath = request.FolderPath
-			response.FolderPathErrors = validatePath(request.FolderPath)
-			if len(response.FolderPathErrors) > 0 {
-				writeResponse(w, r, response)
-				return
-			}
-		} else {
-			folderPathProvidedByUser = false
-			folderPath = path.Join(request.ParentFolderPath, request.FolderName)
-			response.ParentFolderPath = request.ParentFolderPath
-			response.FolderName = request.FolderName
-			response.ParentFolderPathErrors = validatePath(request.ParentFolderPath)
-			response.FolderNameErrors = validateName(request.FolderName)
-			if len(response.ParentFolderPathErrors) > 0 || len(response.FolderNameErrors) > 0 {
-				writeResponse(w, r, response)
-				return
-			}
+		response := Response{
+			ParentFolder:       request.ParentFolder,
+			ParentFolderErrors: validatePath(request.ParentFolder),
+			Name:               request.Name,
+			NameErrors:         validateName(request.Name),
+		}
+		if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
+			writeResponse(w, r, response)
+			return
 		}
 
-		head, tail, _ := strings.Cut(folderPath, "/")
-		switch head {
+		resource, _, _ := strings.Cut(response.ParentFolder, "/")
+		switch resource {
 		case "posts", "notes":
-			if strings.Contains(tail, "/") {
-				const errmsg = "forbidden from creating a folder here"
-				if folderPathProvidedByUser {
-					response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
-				} else {
-					response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
-				}
+			if strings.Contains(response.ParentFolder, "/") {
+				response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden from creating a folder here")
 				writeResponse(w, r, response)
 				return
 			}
 		case "pages", "templates", "assets":
 			break
 		default:
-			const errmsg = "path has to start with posts, notes, pages, templates or assets"
-			if folderPathProvidedByUser {
-				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
-			} else {
-				response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
-			}
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 			writeResponse(w, r, response)
 			return
 		}
 
-		fileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, folderPath))
+		fileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -1100,23 +1060,18 @@ func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePref
 		if err == nil {
 			if fileInfo.IsDir() {
 				if nbrew.MultisiteMode == "subdirectory" {
-					response.FolderAlreadyExists = "/" + path.Join(sitePrefix, "admin", folderPath)
+					response.FolderAlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
 				} else {
-					response.FolderAlreadyExists = "/" + path.Join("admin", folderPath)
+					response.FolderAlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
 				}
 			} else {
-				const errmsg = "file with the same name already exists"
-				if folderPathProvidedByUser {
-					response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
-				} else {
-					response.FolderNameErrors = append(response.FolderNameErrors, errmsg)
-				}
+				response.NameErrors = append(response.NameErrors, "file with the same name already exists")
 			}
 			writeResponse(w, r, response)
 			return
 		}
 
-		err = MkdirAll(nbrew.FS, path.Join(sitePrefix, folderPath), 0755)
+		err = MkdirAll(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name), 0755)
 		if err != nil {
 			if errors.Is(err, ErrUnwritable) {
 				response.Errors = append(response.Errors, err.Error())
