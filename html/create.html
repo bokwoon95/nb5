@@ -19,14 +19,14 @@
         {{- end }}
     </ul>
     {{- end }}
-    {{- if .FolderPath }}
-    <input type="hidden" name="folder_path" value="{{ .FolderPath }}" itemprop="folder_path">
+    {{- if .ParentFolderPath }}
+    <input type="hidden" name="parent_folder_path" value="{{ .ParentFolderPath }}" itemprop="parent_folder_path">
     <div>
-        <div>Creating file in folder: {{ .FolderPath }}</div>
-        {{- if .FolderPathErrors }}
+        <div>Creating file in folder: {{ .ParentFolderPath }}</div>
+        {{- if .ParentFolderPathErrors }}
         <ul>
-            {{- range $error := .FolderPathErrors }}
-            <li itemprop="folder_path_errors">{{ $error }}</li>
+            {{- range $error := .ParentFolderPathErrors }}
+            <li itemprop="parent_folder_path_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}

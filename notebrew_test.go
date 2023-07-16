@@ -180,11 +180,11 @@ func Test_GET_create(t *testing.T) {
 			"file_path": []string{""},
 		},
 	}, {
-		description: "folder_path and file_name provided",
-		rawQuery:    "folder_path=foo/bar&file_name=baz.md&file_path=xxx",
+		description: "parent_folder_path and file_name provided",
+		rawQuery:    "parent_folder_path=foo/bar&file_name=baz.md&file_path=xxx",
 		wantItemprops: url.Values{
-			"folder_path": []string{"foo/bar"},
-			"file_name":   []string{"baz.md"},
+			"parent_folder_path": []string{"foo/bar"},
+			"file_name":          []string{"baz.md"},
 		},
 	}, {
 		description: "file_path provided",
@@ -193,14 +193,14 @@ func Test_GET_create(t *testing.T) {
 			"file_path": []string{"foo/bar/baz.md"},
 		},
 	}, {
-		description: "folder_path + file_name errors",
+		description: "parent_folder_path + file_name errors",
 		seedQueries: []sq.CustomQuery{{
 			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
 			Values: []any{
 				sessionTokenHash,
 				sq.JSONValue(map[string]any{
-					"folder_path": "/FOO///BAR/",
-					"folder_path_errors": []string{
+					"parent_folder_path": "/FOO///BAR/",
+					"parent_folder_path_errors": []string{
 						"cannot have leading slash",
 						"cannot have trailing slash",
 						"cannot have multiple slashes next to each other",
@@ -217,8 +217,8 @@ func Test_GET_create(t *testing.T) {
 			"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken), "0")},
 		},
 		wantItemprops: url.Values{
-			"folder_path": []string{"/FOO///BAR/"},
-			"folder_path_errors": []string{
+			"parent_folder_path": []string{"/FOO///BAR/"},
+			"parent_folder_path_errors": []string{
 				"cannot have leading slash",
 				"cannot have trailing slash",
 				"cannot have multiple slashes next to each other",
@@ -313,19 +313,19 @@ func Test_GET_create(t *testing.T) {
 
 func Test_POST_create(t *testing.T) {
 	type Request struct {
-		FilePath   string `json:"file_path,omitempty"`
-		FolderPath string `json:"folder_path,omitempty"`
-		FileName   string `json:"file_name,omitempty"`
+		FilePath         string `json:"file_path,omitempty"`
+		ParentFolderPath string `json:"parent_folder_path,omitempty"`
+		FileName         string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		FileAlreadyExists string   `json:"file_already_exists,omitempty"`
-		Errors            []string `json:"errors,omitempty"`
-		FolderPath        string   `json:"folder_path,omitempty"`
-		FolderPathErrors  []string `json:"folder_path_errors,omitempty"`
-		FileName          string   `json:"file_name,omitempty"`
-		FileNameErrors    []string `json:"file_name_errors,omitempty"`
-		FilePath          string   `json:"file_path,omitempty"`
-		FilePathErrors    []string `json:"file_path_errors,omitempty"`
+		FileAlreadyExists      string   `json:"file_already_exists,omitempty"`
+		Errors                 []string `json:"errors,omitempty"`
+		ParentFolderPath       string   `json:"parent_folder_path,omitempty"`
+		ParentFolderPathErrors []string `json:"parent_folder_path_errors,omitempty"`
+		FileName               string   `json:"file_name,omitempty"`
+		FileNameErrors         []string `json:"file_name_errors,omitempty"`
+		FilePath               string   `json:"file_path,omitempty"`
+		FilePathErrors         []string `json:"file_path_errors,omitempty"`
 	}
 	type TestTable struct {
 		description          string   // test description
@@ -349,9 +349,9 @@ func Test_POST_create(t *testing.T) {
 		description: "name validation error",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			FilePath:   "/FOO///BAR/baz#$%&.md",
-			FolderPath: "/FOO///BAR/",
-			FileName:   "baz#$%&.md",
+			FilePath:         "/FOO///BAR/baz#$%&.md",
+			ParentFolderPath: "/FOO///BAR/",
+			FileName:         "baz#$%&.md",
 		},
 		response: Response{
 			FilePath: "/FOO///BAR/baz#$%&.md",
@@ -361,8 +361,8 @@ func Test_POST_create(t *testing.T) {
 				"no uppercase letters [A-Z] allowed",
 				"forbidden characters: #$%&",
 			},
-			FolderPath: "/FOO///BAR/",
-			FolderPathErrors: []string{
+			ParentFolderPath: "/FOO///BAR/",
+			ParentFolderPathErrors: []string{
 				"cannot have leading slash",
 				"cannot have trailing slash",
 				"cannot have multiple slashes next to each other",
@@ -377,17 +377,17 @@ func Test_POST_create(t *testing.T) {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			FilePath:   "foo/bar/baz.md",
-			FolderPath: "foo/bar",
-			FileName:   "baz.md",
+			FilePath:         "foo/bar/baz.md",
+			ParentFolderPath: "foo/bar",
+			FileName:         "baz.md",
 		},
 		response: Response{
 			FilePath: "foo/bar/baz.md",
 			FilePathErrors: []string{
 				"path has to start with posts, notes, pages, templates or assets",
 			},
-			FolderPath: "foo/bar",
-			FolderPathErrors: []string{
+			ParentFolderPath: "foo/bar",
+			ParentFolderPathErrors: []string{
 				"path has to start with posts, notes, pages, templates or assets",
 			},
 			FileName: "baz.md",
@@ -398,17 +398,17 @@ func Test_POST_create(t *testing.T) {
 			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "posts/foo/bar/baz.md",
-			FolderPath: "posts/foo/bar",
-			FileName:   "baz.md",
+			FilePath:         "posts/foo/bar/baz.md",
+			ParentFolderPath: "posts/foo/bar",
+			FileName:         "baz.md",
 		},
 		response: Response{
 			FilePath: "posts/foo/bar/baz.md",
 			FilePathErrors: []string{
 				"cannot create a file here",
 			},
-			FolderPath: "posts/foo/bar",
-			FolderPathErrors: []string{
+			ParentFolderPath: "posts/foo/bar",
+			ParentFolderPathErrors: []string{
 				"cannot create a file here",
 			},
 			FileName: "baz.md",
@@ -419,17 +419,17 @@ func Test_POST_create(t *testing.T) {
 			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "notes/foo/bar/baz.md",
-			FolderPath: "notes/foo/bar",
-			FileName:   "baz.md",
+			FilePath:         "notes/foo/bar/baz.md",
+			ParentFolderPath: "notes/foo/bar",
+			FileName:         "baz.md",
 		},
 		response: Response{
 			FilePath: "notes/foo/bar/baz.md",
 			FilePathErrors: []string{
 				"cannot create a file here",
 			},
-			FolderPath: "notes/foo/bar",
-			FolderPathErrors: []string{
+			ParentFolderPath: "notes/foo/bar",
+			ParentFolderPathErrors: []string{
 				"cannot create a file here",
 			},
 			FileName: "baz.md",
@@ -440,17 +440,17 @@ func Test_POST_create(t *testing.T) {
 			"posts": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "posts/baz.sh",
-			FolderPath: "posts",
-			FileName:   "baz.sh",
+			FilePath:         "posts/baz.sh",
+			ParentFolderPath: "posts",
+			FileName:         "baz.sh",
 		},
 		response: Response{
 			FilePath: "posts/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .md)",
 			},
-			FolderPath: "posts",
-			FileName:   "baz.sh",
+			ParentFolderPath: "posts",
+			FileName:         "baz.sh",
 			FileNameErrors: []string{
 				"invalid extension (must end in .md)",
 			},
@@ -461,17 +461,17 @@ func Test_POST_create(t *testing.T) {
 			"notes": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "notes/baz.sh",
-			FolderPath: "notes",
-			FileName:   "baz.sh",
+			FilePath:         "notes/baz.sh",
+			ParentFolderPath: "notes",
+			FileName:         "baz.sh",
 		},
 		response: Response{
 			FilePath: "notes/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .md)",
 			},
-			FolderPath: "notes",
-			FileName:   "baz.sh",
+			ParentFolderPath: "notes",
+			FileName:         "baz.sh",
 			FileNameErrors: []string{
 				"invalid extension (must end in .md)",
 			},
@@ -482,17 +482,17 @@ func Test_POST_create(t *testing.T) {
 			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "pages/foo/bar/baz.sh",
-			FolderPath: "pages/foo/bar",
-			FileName:   "baz.sh",
+			FilePath:         "pages/foo/bar/baz.sh",
+			ParentFolderPath: "pages/foo/bar",
+			FileName:         "baz.sh",
 		},
 		response: Response{
 			FilePath: "pages/foo/bar/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .html)",
 			},
-			FolderPath: "pages/foo/bar",
-			FileName:   "baz.sh",
+			ParentFolderPath: "pages/foo/bar",
+			FileName:         "baz.sh",
 			FileNameErrors: []string{
 				"invalid extension (must end in .html)",
 			},
@@ -503,17 +503,17 @@ func Test_POST_create(t *testing.T) {
 			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "templates/foo/bar/baz.sh",
-			FolderPath: "templates/foo/bar",
-			FileName:   "baz.sh",
+			FilePath:         "templates/foo/bar/baz.sh",
+			ParentFolderPath: "templates/foo/bar",
+			FileName:         "baz.sh",
 		},
 		response: Response{
 			FilePath: "templates/foo/bar/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must end in .html)",
 			},
-			FolderPath: "templates/foo/bar",
-			FileName:   "baz.sh",
+			ParentFolderPath: "templates/foo/bar",
+			FileName:         "baz.sh",
 			FileNameErrors: []string{
 				"invalid extension (must end in .html)",
 			},
@@ -524,17 +524,17 @@ func Test_POST_create(t *testing.T) {
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "assets/foo/bar/baz.sh",
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.sh",
+			FilePath:         "assets/foo/bar/baz.sh",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.sh",
 		},
 		response: Response{
 			FilePath: "assets/foo/bar/baz.sh",
 			FilePathErrors: []string{
 				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.sh",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.sh",
 			FileNameErrors: []string{
 				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
@@ -543,17 +543,17 @@ func Test_POST_create(t *testing.T) {
 		description: "parent folder doesnt exist",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			FilePath:   "assets/foo/bar/baz.js",
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.js",
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
 		},
 		response: Response{
 			FilePath: "assets/foo/bar/baz.js",
 			FilePathErrors: []string{
 				"parent folder does not exist",
 			},
-			FolderPath: "assets/foo/bar",
-			FolderPathErrors: []string{
+			ParentFolderPath: "assets/foo/bar",
+			ParentFolderPathErrors: []string{
 				"parent folder does not exist",
 			},
 			FileName: "baz.js",
@@ -565,14 +565,14 @@ func Test_POST_create(t *testing.T) {
 			"assets/foo/bar/baz.js": &fstest.MapFile{},
 		}},
 		request: Request{
-			FilePath:   "assets/foo/bar/baz.js",
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.js",
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
 		},
 		response: Response{
 			FileAlreadyExists: "/admin/assets/foo/bar/baz.js",
 			FilePath:          "assets/foo/bar/baz.js",
-			FolderPath:        "assets/foo/bar",
+			ParentFolderPath:  "assets/foo/bar",
 			FileName:          "baz.js",
 		},
 		assertFilePathExists: "assets/foo/bar/baz.js",
@@ -585,14 +585,14 @@ func Test_POST_create(t *testing.T) {
 		multisiteMode: "subdirectory",
 		sitePrefix:    "~bokwoon",
 		request: Request{
-			FilePath:   "assets/foo/bar/baz.js",
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.js",
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
 		},
 		response: Response{
 			FileAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
 			FilePath:          "assets/foo/bar/baz.js",
-			FolderPath:        "assets/foo/bar",
+			ParentFolderPath:  "assets/foo/bar",
 			FileName:          "baz.js",
 		},
 		assertFilePathExists: "~bokwoon/assets/foo/bar/baz.js",
@@ -602,14 +602,14 @@ func Test_POST_create(t *testing.T) {
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:   "assets/foo/bar/baz.js",
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.js",
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
 		},
 		response: Response{
-			FilePath:   "assets/foo/bar/baz.js",
-			FolderPath: "assets/foo/bar",
-			FileName:   "baz.js",
+			FilePath:         "assets/foo/bar/baz.js",
+			ParentFolderPath: "assets/foo/bar",
+			FileName:         "baz.js",
 		},
 		wantLocation:         "/admin/assets/foo/bar/baz.js",
 		assertFilePathExists: "assets/foo/bar/baz.js",
@@ -663,7 +663,7 @@ func Test_POST_create(t *testing.T) {
 			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Fatal(testutil.Callers(), diff)
 			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.FolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
+			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
 				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -673,7 +673,7 @@ func Test_POST_create(t *testing.T) {
 					}
 				}
 			}
-			// === JSON, folder_path + file_name === //
+			// === JSON, parent_folder_path + file_name === //
 			nbrew = &Notebrew{
 				FS:            tt.testFS.Clone(),
 				DB:            newDatabase(t),
@@ -684,8 +684,8 @@ func Test_POST_create(t *testing.T) {
 				MultisiteMode: tt.multisiteMode,
 			}
 			b, err = json.Marshal(Request{
-				FolderPath: tt.request.FolderPath,
-				FileName:   tt.request.FileName,
+				ParentFolderPath: tt.request.ParentFolderPath,
+				FileName:         tt.request.FileName,
 			})
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
@@ -710,17 +710,17 @@ func Test_POST_create(t *testing.T) {
 				t.Fatal(testutil.Callers(), err)
 			}
 			wantResponse = Response{
-				FileAlreadyExists: tt.response.FileAlreadyExists,
-				Errors:            tt.response.Errors,
-				FolderPath:        tt.response.FolderPath,
-				FolderPathErrors:  tt.response.FolderPathErrors,
-				FileName:          tt.response.FileName,
-				FileNameErrors:    tt.response.FileNameErrors,
+				FileAlreadyExists:      tt.response.FileAlreadyExists,
+				Errors:                 tt.response.Errors,
+				ParentFolderPath:       tt.response.ParentFolderPath,
+				ParentFolderPathErrors: tt.response.ParentFolderPathErrors,
+				FileName:               tt.response.FileName,
+				FileNameErrors:         tt.response.FileNameErrors,
 			}
 			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.FolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
+			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
 				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -801,7 +801,7 @@ func Test_POST_create(t *testing.T) {
 					t.Fatal(testutil.Callers(), diff)
 				}
 			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.FolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
+			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
 				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -811,7 +811,7 @@ func Test_POST_create(t *testing.T) {
 					}
 				}
 			}
-			// === HTML form, folder_path + file_name === //
+			// === HTML form, parent_folder_path + file_name === //
 			nbrew = &Notebrew{
 				FS:            tt.testFS.Clone(),
 				DB:            newDatabase(t),
@@ -822,8 +822,8 @@ func Test_POST_create(t *testing.T) {
 				MultisiteMode: tt.multisiteMode,
 			}
 			values = url.Values{
-				"folder_path": []string{tt.request.FolderPath},
-				"file_name":   []string{tt.request.FileName},
+				"parent_folder_path": []string{tt.request.ParentFolderPath},
+				"file_name":          []string{tt.request.FileName},
 			}
 			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
 			if err != nil {
@@ -874,18 +874,18 @@ func Test_POST_create(t *testing.T) {
 					t.Fatal(testutil.Callers(), "no session set")
 				}
 				wantResponse = Response{
-					FileAlreadyExists: tt.response.FileAlreadyExists,
-					Errors:            tt.response.Errors,
-					FolderPath:        tt.response.FolderPath,
-					FolderPathErrors:  tt.response.FolderPathErrors,
-					FileName:          tt.response.FileName,
-					FileNameErrors:    tt.response.FileNameErrors,
+					FileAlreadyExists:      tt.response.FileAlreadyExists,
+					Errors:                 tt.response.Errors,
+					ParentFolderPath:       tt.response.ParentFolderPath,
+					ParentFolderPathErrors: tt.response.ParentFolderPathErrors,
+					FileName:               tt.response.FileName,
+					FileNameErrors:         tt.response.FileNameErrors,
 				}
 				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
 					t.Fatal(testutil.Callers(), diff)
 				}
 			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.FolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
+			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
 				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -900,7 +900,7 @@ func Test_POST_create(t *testing.T) {
 }
 
 func Test_POST_create_autogenerateID(t *testing.T) {
-	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and folder_path + file_name)
+	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and parent_folder_path + file_name)
 }
 
 // extract into separate function that tests *all* paths for a specific error condition:

@@ -600,19 +600,19 @@ var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	type Request struct {
-		FilePath   string `json:"file_path,omitempty"`
-		FolderPath string `json:"folder_path,omitempty"`
-		FileName   string `json:"file_name,omitempty"`
+		FilePath         string `json:"file_path,omitempty"`
+		ParentFolderPath string `json:"parent_folder_path,omitempty"`
+		FileName         string `json:"file_name,omitempty"`
 	}
 	type Response struct {
-		FileAlreadyExists string   `json:"file_already_exists,omitempty"`
-		Errors            []string `json:"errors,omitempty"`
-		FilePath          string   `json:"file_path,omitempty"`
-		FilePathErrors    []string `json:"file_path_errors,omitempty"`
-		FolderPath        string   `json:"folder_path,omitempty"`
-		FolderPathErrors  []string `json:"folder_path_errors,omitempty"`
-		FileName          string   `json:"file_name,omitempty"`
-		FileNameErrors    []string `json:"file_name_errors,omitempty"`
+		FileAlreadyExists      string   `json:"file_already_exists,omitempty"`
+		Errors                 []string `json:"errors,omitempty"`
+		FilePath               string   `json:"file_path,omitempty"`
+		FilePathErrors         []string `json:"file_path_errors,omitempty"`
+		ParentFolderPath       string   `json:"parent_folder_path,omitempty"`
+		ParentFolderPathErrors []string `json:"parent_folder_path_errors,omitempty"`
+		FileName               string   `json:"file_name,omitempty"`
+		FileNameErrors         []string `json:"file_name_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -639,7 +639,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			logger.Error(err.Error())
 		}
 		if !ok {
-			response.FolderPath = r.Form.Get("folder_path")
+			response.ParentFolderPath = r.Form.Get("parent_folder_path")
 			response.FileName = r.Form.Get("file_name")
 			response.FilePath = r.Form.Get("file_path")
 		}
@@ -673,7 +673,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if response.FileAlreadyExists != "" || len(response.Errors) > 0 || len(response.FilePathErrors) > 0 || len(response.FolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
+			if response.FileAlreadyExists != "" || len(response.Errors) > 0 || len(response.FilePathErrors) > 0 || len(response.ParentFolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -691,7 +691,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			}
 			filePath := response.FilePath
 			if filePath == "" {
-				filePath = path.Join(response.FolderPath, response.FileName)
+				filePath = path.Join(response.ParentFolderPath, response.FileName)
 			}
 			var redirectURL string
 			if nbrew.MultisiteMode == "subdirectory" {
@@ -722,12 +722,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
 			}
-			request.FolderPath = r.Form.Get("folder_path")
+			request.ParentFolderPath = r.Form.Get("parent_folder_path")
 			request.FileName = r.Form.Get("file_name")
 			request.FilePath = r.Form.Get("file_path")
 		}
 
-		if request.FilePath == "" && request.FolderPath == "" && request.FileName == "" {
+		if request.FilePath == "" && request.ParentFolderPath == "" && request.FileName == "" {
 			writeResponse(w, r, Response{
 				Errors: []string{"missing arguments"},
 			})
@@ -735,11 +735,11 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 		}
 
 		// filePathProvidedByUser tracks whether the user provided file_path or
-		// folder_path and file_name.
+		// parent_folder_path and file_name.
 		var filePathProvidedByUser bool
 
 		// filePath is the path of the file to create, obtained from either
-		// file_path or path.Join(folder_path, file_name).
+		// file_path or path.Join(parent_folder_path, file_name).
 		var filePath string
 
 		var response Response
@@ -754,12 +754,12 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			}
 		} else {
 			filePathProvidedByUser = false
-			filePath = path.Join(request.FolderPath, request.FileName)
-			response.FolderPath = request.FolderPath
+			filePath = path.Join(request.ParentFolderPath, request.FileName)
+			response.ParentFolderPath = request.ParentFolderPath
 			response.FileName = request.FileName
-			response.FolderPathErrors = validatePath(request.FolderPath)
+			response.ParentFolderPathErrors = validatePath(request.ParentFolderPath)
 			response.FileNameErrors = validateName(request.FileName)
-			if len(response.FolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
+			if len(response.ParentFolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
 				writeResponse(w, r, response)
 				return
 			}
@@ -774,7 +774,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 				if filePathProvidedByUser {
 					response.FilePathErrors = append(response.FilePathErrors, errmsg)
 				} else {
-					response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+					response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
 				}
 				writeResponse(w, r, response)
 				return
@@ -836,7 +836,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			if filePathProvidedByUser {
 				response.FilePathErrors = append(response.FilePathErrors, errmsg)
 			} else {
-				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+				response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
 			}
 			writeResponse(w, r, response)
 			return
@@ -853,7 +853,7 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 			if filePathProvidedByUser {
 				response.FilePathErrors = append(response.FilePathErrors, errmsg)
 			} else {
-				response.FolderPathErrors = append(response.FolderPathErrors, errmsg)
+				response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
 			}
 			writeResponse(w, r, response)
 			return
@@ -896,6 +896,35 @@ func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (nbrew *Notebrew) mkdirAll(w http.ResponseWriter, r *http.Request, sitePrefix string) {
+	type Request struct {
+		FolderPath       string `json:"folder_path,omitempty"`
+		ParentFolderPath string `json:"parent_folder_path,omitempty"`
+		FolderName       string `json:"folder_name,omitempty"`
+	}
+	type Response struct {
+		FolderAlreadyExists    string   `json:"folder_already_exists,omitempty"`
+		Errors                 []string `json:"errors,omitempty"`
+		FolderPath             string   `json:"folder_path,omitempty"`
+		FolderPathErrors       []string `json:"folder_path_errors,omitempty"`
+		ParentFolderPath       string   `json:"parent_folder_path,omitempty"`
+		ParentFolderPathErrors []string `json:"parent_folder_path_errors,omitempty"`
+		FolderName             string   `json:"folder_name,omitempty"`
+		FolderNameErrors       []string `json:"folder_name_errors,omitempty"`
+	}
+
+	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+	if !ok {
+		logger = slog.Default()
+	}
+	logger = logger.With(
+		slog.String("method", r.Method),
+		slog.String("url", r.URL.String()),
+		slog.String("sitePrefix", sitePrefix),
+	)
+	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
 }
 
 func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {
