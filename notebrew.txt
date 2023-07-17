@@ -7,20 +7,21 @@ notes:
     - Must start with posts, pages, templates, notes or assets.
     - Posts and pages must adhere to the /posts/{postID}/ or /posts/{category}/{postID}/ format.
 
-/admin/create/
-- dir
+/admin/create_file/
+- parent_folder
 - name
-/admin/mkdir/
-- dir
+/admin/create_folder/
+- parent_folder
 - name
-/admin/remove/
-- dir
-- name
+/admin/rename/
+- parent_folder
+- old_name
+- new_name
 /admin/move/
-- olddir
-- oldname
-- newdir
-- newname
+- path
+- dest_folder
+/admin/delete/
+- path
 
 nbrew.create()
 nbrew.mkdirAll()

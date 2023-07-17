@@ -602,19 +602,16 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 	// TODO: change the request and response to remove the file_path argument
 	// and update all the tests + implementation accordingly.
 	type Request struct {
-		FilePath         string `json:"file_path,omitempty"`
-		ParentFolderPath string `json:"parent_folder_path,omitempty"`
-		FileName         string `json:"file_name,omitempty"`
+		ParentFolder string `json:"parent_folder,omitempty"`
+		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		FileAlreadyExists      string   `json:"file_already_exists,omitempty"`
-		Errors                 []string `json:"errors,omitempty"`
-		FilePath               string   `json:"file_path,omitempty"`
-		FilePathErrors         []string `json:"file_path_errors,omitempty"`
-		ParentFolderPath       string   `json:"parent_folder_path,omitempty"`
-		ParentFolderPathErrors []string `json:"parent_folder_path_errors,omitempty"`
-		FileName               string   `json:"file_name,omitempty"`
-		FileNameErrors         []string `json:"file_name_errors,omitempty"`
+		FileAlreadyExists  string   `json:"file_already_exists,omitempty"`
+		Errors             []string `json:"errors,omitempty"`
+		ParentFolder       string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
+		Name               string   `json:"name,omitempty"`
+		NameErrors         []string `json:"name_errors,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -641,9 +638,8 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			logger.Error(err.Error())
 		}
 		if !ok {
-			response.ParentFolderPath = r.Form.Get("parent_folder_path")
-			response.FileName = r.Form.Get("file_name")
-			response.FilePath = r.Form.Get("file_path")
+			response.ParentFolder = r.Form.Get("parent_folder")
+			response.Name = r.Form.Get("name")
 		}
 		nbrew.clearSession(w, r, "flash_session")
 		tmpl, err := template.ParseFS(rootFS, "html/create.html")
@@ -675,7 +671,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				w.Write(b)
 				return
 			}
-			if response.FileAlreadyExists != "" || len(response.Errors) > 0 || len(response.FilePathErrors) > 0 || len(response.ParentFolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
+			if response.FileAlreadyExists != "" || len(response.Errors) > 0 || len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -691,15 +687,11 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				http.Redirect(w, r, r.URL.String(), http.StatusFound)
 				return
 			}
-			filePath := response.FilePath
-			if filePath == "" {
-				filePath = path.Join(response.ParentFolderPath, response.FileName)
-			}
 			var redirectURL string
 			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", filePath)
+				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
 			} else {
-				redirectURL = "/" + path.Join("admin", filePath)
+				redirectURL = "/" + path.Join("admin", response.ParentFolder, response.Name)
 			}
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 		}
@@ -724,91 +716,56 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
 				return
 			}
-			request.ParentFolderPath = r.Form.Get("parent_folder_path")
-			request.FileName = r.Form.Get("file_name")
-			request.FilePath = r.Form.Get("file_path")
+			request.ParentFolder = r.Form.Get("parent_folder")
+			request.Name = r.Form.Get("name")
 		}
 
-		if request.FilePath == "" && request.ParentFolderPath == "" && request.FileName == "" {
+		// TODO: allow empty request.Name only if parent folder is posts or
+		// notes (for autogeneration of post id).
+		if request.ParentFolder == "" && request.Name == "" {
 			writeResponse(w, r, Response{
 				Errors: []string{"missing arguments"},
 			})
 			return
 		}
 
-		// filePathProvidedByUser tracks whether the user provided file_path or
-		// parent_folder_path and file_name.
-		var filePathProvidedByUser bool
-
-		// filePath is the path of the file to create, obtained from either
-		// file_path or path.Join(parent_folder_path, file_name).
-		var filePath string
-
-		var response Response
-		if request.FilePath != "" {
-			filePathProvidedByUser = true
-			filePath = request.FilePath
-			response.FilePath = request.FilePath
-			response.FilePathErrors = validatePath(request.FilePath)
-			if len(response.FilePathErrors) > 0 {
-				writeResponse(w, r, response)
-				return
-			}
-		} else {
-			filePathProvidedByUser = false
-			filePath = path.Join(request.ParentFolderPath, request.FileName)
-			response.ParentFolderPath = request.ParentFolderPath
-			response.FileName = request.FileName
-			response.ParentFolderPathErrors = validatePath(request.ParentFolderPath)
-			response.FileNameErrors = validateName(request.FileName)
-			if len(response.ParentFolderPathErrors) > 0 || len(response.FileNameErrors) > 0 {
-				writeResponse(w, r, response)
-				return
-			}
+		response := Response{
+			ParentFolder:       request.ParentFolder,
+			ParentFolderErrors: validatePath(request.ParentFolder),
+			Name:               request.Name,
+			NameErrors:         validateName(request.Name),
+		}
+		if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
+			writeResponse(w, r, response)
+			return
 		}
 
-		head, tail, _ := strings.Cut(filePath, "/")
-		switch head {
+		resource, _, _ := strings.Cut(response.ParentFolder, "/")
+		switch resource {
 		case "posts", "notes":
-			slashCount := strings.Count(tail, "/")
-			if slashCount > 1 {
-				const errmsg = "cannot create a file here"
-				if filePathProvidedByUser {
-					response.FilePathErrors = append(response.FilePathErrors, errmsg)
-				} else {
-					response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
-				}
+			if strings.Count(response.ParentFolder, "/") > 1 {
+				response.ParentFolderErrors = append(response.ParentFolderErrors, "cannot create a file here")
 				writeResponse(w, r, response)
 				return
 			}
-			if tail == "" || (!strings.Contains(tail, "/") && path.Ext(tail) == "") {
-				filePath += "/" + strings.ToLower(ulid.Make().String()) + ".md"
+			if response.Name == "" {
+				response.Name = strings.ToLower(ulid.Make().String()) + ".md"
 			}
-			if path.Ext(filePath) != ".md" {
-				const errmsg = "invalid extension (must end in .md)"
-				if filePathProvidedByUser {
-					response.FilePathErrors = append(response.FilePathErrors, errmsg)
-				} else {
-					response.FileNameErrors = append(response.FileNameErrors, errmsg)
-				}
+			if path.Ext(response.Name) != ".md" {
+				response.NameErrors = append(response.NameErrors, "invalid extension (must end in .md)")
 				writeResponse(w, r, response)
 				return
 			}
 		case "pages", "templates":
-			if path.Ext(filePath) != ".html" {
-				const errmsg = "invalid extension (must end in .html)"
-				if filePathProvidedByUser {
-					response.FilePathErrors = append(response.FilePathErrors, errmsg)
-				} else {
-					response.FileNameErrors = append(response.FileNameErrors, errmsg)
-				}
+			if path.Ext(response.Name) != ".html" {
+				response.NameErrors = append(response.NameErrors, "invalid extension (must end in .html)")
 				writeResponse(w, r, response)
 				return
 			}
 		case "assets":
-			ext := path.Ext(filePath)
+			ext := path.Ext(response.Name)
 			if ext == ".gz" {
-				ext = path.Ext(strings.TrimSuffix(filePath, ext))
+				ext = path.Ext(strings.TrimSuffix(response.Name, ext))
 			}
 			allowedExts := []string{
 				".html", ".css", ".js", ".md", ".txt",
@@ -824,44 +781,29 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				}
 			}
 			if !match {
-				errmsg := fmt.Sprintf("invalid extension (must be one of: %s)", strings.Join(allowedExts, ", "))
-				if filePathProvidedByUser {
-					response.FilePathErrors = append(response.FilePathErrors, errmsg)
-				} else {
-					response.FileNameErrors = append(response.FileNameErrors, errmsg)
-				}
+				response.NameErrors = append(response.NameErrors, fmt.Sprintf("invalid extension (must be one of: %s)", strings.Join(allowedExts, ", ")))
 				writeResponse(w, r, response)
 				return
 			}
 		default:
-			const errmsg = "path has to start with posts, notes, pages, templates or assets"
-			if filePathProvidedByUser {
-				response.FilePathErrors = append(response.FilePathErrors, errmsg)
-			} else {
-				response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
-			}
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 			writeResponse(w, r, response)
 			return
 		}
 
-		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, path.Dir(filePath)))
+		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder))
 		if err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
 				logger.Error(err.Error())
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			const errmsg = "parent folder does not exist"
-			if filePathProvidedByUser {
-				response.FilePathErrors = append(response.FilePathErrors, errmsg)
-			} else {
-				response.ParentFolderPathErrors = append(response.ParentFolderPathErrors, errmsg)
-			}
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
 			writeResponse(w, r, response)
 			return
 		}
 
-		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, filePath))
+		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -869,15 +811,15 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		}
 		if err == nil {
 			if nbrew.MultisiteMode == "subdirectory" {
-				response.FileAlreadyExists = "/" + path.Join(sitePrefix, "admin", filePath)
+				response.FileAlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
 			} else {
-				response.FileAlreadyExists = "/" + path.Join("admin", filePath)
+				response.FileAlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
 			}
 			writeResponse(w, r, response)
 			return
 		}
 
-		writer, err := OpenWriter(nbrew.FS, path.Join(sitePrefix, filePath), 0644)
+		writer, err := OpenWriter(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name), 0644)
 		if err != nil {
 			if errors.Is(err, ErrUnwritable) {
 				response.Errors = append(response.Errors, err.Error())
