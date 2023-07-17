@@ -633,7 +633,8 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 
 		var request Request
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if contentType == "application/json" {
+		switch contentType {
+		case "application/json":
 			err := json.NewDecoder(r.Body).Decode(&request)
 			if err != nil {
 				var syntaxErr *json.SyntaxError
@@ -645,7 +646,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-		} else {
+		case "application/x-www-form-urlencoded":
 			err := r.ParseForm()
 			if err != nil {
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
@@ -653,6 +654,9 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			}
 			request.ParentFolder = r.Form.Get("parent_folder")
 			request.Name = r.Form.Get("name")
+		default:
+			http.Error(w, "415 Unsupported Media Type", http.StatusUnsupportedMediaType)
+			return
 		}
 
 		response := Response{
@@ -861,7 +865,8 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 
 		var request Request
 		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if contentType == "application/json" {
+		switch contentType {
+		case "application/json":
 			err := json.NewDecoder(r.Body).Decode(&request)
 			if err != nil {
 				var syntaxErr *json.SyntaxError
@@ -873,7 +878,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-		} else {
+		case "application/x-www-form-urlencoded":
 			err := r.ParseForm()
 			if err != nil {
 				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
@@ -881,6 +886,9 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 			}
 			request.ParentFolder = r.Form.Get("parent_folder")
 			request.Name = r.Form.Get("name")
+		default:
+			http.Error(w, "415 Unsupported Media Type", http.StatusUnsupportedMediaType)
+			return
 		}
 
 		response := Response{
@@ -952,7 +960,6 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
-
 }
 
 func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {

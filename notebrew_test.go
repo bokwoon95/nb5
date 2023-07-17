@@ -108,14 +108,6 @@ func Test_GET_createFile(t *testing.T) {
 		wantItemprops    url.Values     // itemprops extracted from parsing html response
 	}
 
-	jsonify := func(v any) []byte {
-		b, err := json.Marshal(v)
-		if err != nil {
-			panic(err)
-		}
-		return b
-	}
-
 	var (
 		sessionToken     = newToken(time.Now())
 		sessionTokenHash = hashToken(sessionToken)
@@ -582,6 +574,114 @@ func Test_POST_createFile(t *testing.T) {
 	}
 }
 
+func Test_GET_createFolder(t *testing.T) {
+	type Session struct {
+		sessionTokenHash []byte
+		data             []byte
+	}
+	type TestTable struct {
+		description      string         // test description
+		databaseSessions []Session      // sessions that the database starts off with
+		rawQuery         string         // request GET query parameters
+		cookies          []*http.Cookie // request cookies
+		wantItemprops    url.Values     // itemprops extracted from parsing html response
+	}
+
+	var (
+		sessionToken     = newToken(time.Now())
+		sessionTokenHash = hashToken(sessionToken)
+	)
+
+	tests := []TestTable{{
+		description: "basic",
+		wantItemprops: url.Values{
+			"parent_folder": []string{""},
+			"name":          []string{""},
+		},
+	}, {
+		description: "parent_folder and name provided",
+		rawQuery:    "parent_folder=/foo/bar/&name=baz.md",
+		wantItemprops: url.Values{
+			"parent_folder": []string{"foo/bar"},
+			"name":          []string{"baz.md"},
+		},
+	}, {
+		description: "input errors",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"parent_folder": "",
+				"parent_folder_errors": []string{
+					"parent folder has to start with posts, notes, pages, templates or assets",
+				},
+				"name": "bAz#$%&",
+				"name_errors": []string{
+					"no uppercase letters [A-Z] allowed",
+					"forbidden characters: #$%&",
+				},
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"parent_folder": []string{""},
+			"parent_folder_errors": []string{
+				"parent folder has to start with posts, notes, pages, templates or assets",
+			},
+			"name": []string{"bAz#$%&"},
+			"name_errors": []string{
+				"no uppercase letters [A-Z] allowed",
+				"forbidden characters: #$%&",
+			},
+		},
+	}, {
+		description: "file already exists",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"parent_folder":         "assets/foo/bar",
+				"name":                  "baz",
+				"folder_already_exists": "/admin/assets/foo/bar/baz",
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"parent_folder":       []string{"assets/foo/bar"},
+			"name":                []string{"baz.js"},
+			"folder_already_exists": []string{"/admin/assets/foo/bar/baz/"},
+		},
+	}, {
+		description: "error",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"error": "lorem ipsum dolor sit amet",
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"error":         []string{"lorem ipsum dolor sit amet"},
+			"parent_folder": []string{""},
+			"name":          []string{""},
+		},
+	}}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Parallel()
+		})
+	}
+}
+
 func Test_POST_create_autogenerateID(t *testing.T) {
 	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and parent_folder_path + file_name)
 }
@@ -855,4 +955,12 @@ func getItemprops(body string) (url.Values, error) {
 		nodes = append(nodes, node.NextSibling, node.FirstChild)
 	}
 	return itemprops, nil
+}
+
+func jsonify(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
