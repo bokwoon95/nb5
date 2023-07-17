@@ -598,7 +598,7 @@ type contextKey struct{}
 
 var loggerKey = &contextKey{}
 
-func (nbrew *Notebrew) create(w http.ResponseWriter, r *http.Request, sitePrefix string) {
+func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	// TODO: change the request and response to remove the file_path argument
 	// and update all the tests + implementation accordingly.
 	type Request struct {

@@ -161,7 +161,7 @@ func Test_validatePath(t *testing.T) {
 	}
 }
 
-func Test_GET_create(t *testing.T) {
+func Test_GET_createFile(t *testing.T) {
 	type TestTable struct {
 		description   string           // test description
 		seedQueries   []sq.CustomQuery // SQL queries to seed database with
@@ -277,7 +277,7 @@ func Test_GET_create(t *testing.T) {
 			r.Header = tt.header
 			r.URL.RawQuery = tt.rawQuery
 			w := httptest.NewRecorder()
-			nbrew.create(w, r, "")
+			nbrew.createFile(w, r, "")
 			response := w.Result()
 			body := w.Body.String()
 			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
@@ -312,7 +312,7 @@ func Test_GET_create(t *testing.T) {
 	}
 }
 
-func Test_POST_create(t *testing.T) {
+func Test_POST_createFile(t *testing.T) {
 	type Request struct {
 		FilePath         string `json:"file_path,omitempty"`
 		ParentFolderPath string `json:"parent_folder_path,omitempty"`
@@ -664,7 +664,7 @@ func Test_POST_create(t *testing.T) {
 				"Accept":       []string{"application/json"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.create(w, r, tt.sitePrefix)
+			nbrew.createFile(w, r, tt.sitePrefix)
 			result := w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -724,7 +724,7 @@ func Test_POST_create(t *testing.T) {
 				"Accept":       []string{"application/json"},
 			}
 			w = httptest.NewRecorder()
-			nbrew.create(w, r, tt.sitePrefix)
+			nbrew.createFile(w, r, tt.sitePrefix)
 			result = w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -776,7 +776,7 @@ func Test_POST_create(t *testing.T) {
 				"Content-Type": []string{"application/x-www-form-urlencoded"},
 			}
 			w = httptest.NewRecorder()
-			nbrew.create(w, r, tt.sitePrefix)
+			nbrew.createFile(w, r, tt.sitePrefix)
 			result = w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -858,7 +858,7 @@ func Test_POST_create(t *testing.T) {
 				"Content-Type": []string{"application/x-www-form-urlencoded"},
 			}
 			w = httptest.NewRecorder()
-			nbrew.create(w, r, tt.sitePrefix)
+			nbrew.createFile(w, r, tt.sitePrefix)
 			result = w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
