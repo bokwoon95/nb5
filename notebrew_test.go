@@ -485,13 +485,16 @@ func Test_POST_createFile(t *testing.T) {
 				t.Error(testutil.Callers(), diff)
 			}
 			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFileExists)
+				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFileExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
 						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFileExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
+				}
+				if fileInfo.IsDir() {
+					t.Fatal(testutil.Callers(), "file was created but is a directory")
 				}
 			}
 			// === HTML form === //
@@ -766,14 +769,14 @@ func Test_POST_createFolder(t *testing.T) {
 		FolderAlreadyExists string   `json:"folder_already_exists,omitempty"`
 	}
 	type TestTable struct {
-		description      string   // test description
-		testFS           *TestFS  // Notebrew.FS
-		multisiteMode    string   // Notebrew.MultisiteMode
-		sitePrefix       string   // sitePrefix argument
-		request          Request  // request payload
-		wantResponse     Response // response payload
-		wantLocation     string   // HTTP response Location header
-		assertFileExists string   // file that should be asserted for existence if response has no errors
+		description        string   // test description
+		testFS             *TestFS  // Notebrew.FS
+		multisiteMode      string   // Notebrew.MultisiteMode
+		sitePrefix         string   // sitePrefix argument
+		request            Request  // request payload
+		wantResponse       Response // response payload
+		wantLocation       string   // HTTP response Location header
+		assertFolderExists string   // folder that should be asserted for existence if response has no errors
 	}
 
 	tests := []TestTable{{
@@ -798,51 +801,17 @@ func Test_POST_createFolder(t *testing.T) {
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/posts/foo/bar/",
-			Name:         "bAz#$%&.exe",
+			Name:         "bAz#$%&",
 		},
 		wantResponse: Response{
 			ParentFolder: "posts/foo/bar",
 			ParentFolderErrors: []string{
 				"not allowed to use this parent folder",
 			},
-			Name: "bAz#$%&.exe",
+			Name: "bAz#$%&",
 			NameErrors: []string{
 				"no uppercase letters [A-Z] allowed",
 				"forbidden characters: #$%&",
-				"invalid extension (must end in .md)",
-			},
-		},
-	}, {
-		description: "pages errors",
-		testFS:      &TestFS{fstest.MapFS{}},
-		request: Request{
-			ParentFolder: "/pages/foo/bar/",
-			Name:         "bAz#$%&.exe",
-		},
-		wantResponse: Response{
-			ParentFolder: "pages/foo/bar",
-			Name:         "bAz#$%&.exe",
-			NameErrors: []string{
-				"no uppercase letters [A-Z] allowed",
-				"forbidden characters: #$%&",
-				"invalid extension (must end in .html)",
-			},
-		},
-	}, {
-		description: "assets errors",
-		testFS:      &TestFS{fstest.MapFS{}},
-		request: Request{
-			ParentFolder: "/assets/foo/bar/",
-			Name:         "bAz#$%&.exe",
-		},
-		wantResponse: Response{
-			ParentFolder:       "assets/foo/bar",
-			ParentFolderErrors: []string{},
-			Name:               "bAz#$%&.exe",
-			NameErrors: []string{
-				"no uppercase letters [A-Z] allowed",
-				"forbidden characters: #$%&",
-				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
 		},
 	}, {
@@ -850,31 +819,46 @@ func Test_POST_createFolder(t *testing.T) {
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
+			Name:         "baz",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
 			ParentFolderErrors: []string{
 				"parent folder does not exist",
 			},
-			Name: "baz.js",
+			Name: "baz",
 		},
 	}, {
-		description: "file already exists",
+		description: "folder already exists",
 		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
-			"assets/foo/bar/baz.js": &fstest.MapFile{},
+			"assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
 			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
+			Name:         "baz",
 		},
 		wantResponse: Response{
 			ParentFolder:        "assets/foo/bar",
-			Name:                "baz.js",
-			FolderAlreadyExists: "/admin/assets/foo/bar/baz.js",
+			Name:                "baz",
+			FolderAlreadyExists: "/admin/assets/foo/bar/baz",
 		},
-		assertFileExists: "assets/foo/bar/baz.js",
+		assertFolderExists: "assets/foo/bar/baz",
+	}, {
+		description: "file with same name already exists",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar/baz": &fstest.MapFile{},
+		}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz",
+			NameErrors: []string{
+				"file with the same name already exists",
+			},
+		},
 	}, {
 		description: "file already exists (with sitePrefix)",
 		testFS: &TestFS{fstest.MapFS{
@@ -892,24 +876,41 @@ func Test_POST_createFolder(t *testing.T) {
 			Name:                "baz.js",
 			FolderAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
 		},
-		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
+		assertFolderExists: "~bokwoon/assets/foo/bar/baz.js",
 	}, {
-		description: "file created successfully",
+		description: "folder already exists (with sitePrefix)",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		multisiteMode: "subdirectory",
+		sitePrefix:    "~bokwoon",
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz",
+		},
+		wantResponse: Response{
+			ParentFolder:        "assets/foo/bar",
+			Name:                "baz",
+			FolderAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz",
+		},
+		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
+	}, {
+		description: "folder created successfully",
 		testFS: &TestFS{fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
 			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
+			Name:         "baz",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
+			Name:         "baz",
 		},
-		wantLocation:     "/admin/assets/foo/bar/baz.js",
-		assertFileExists: "assets/foo/bar/baz.js",
+		wantLocation:       "/admin/assets/foo/bar/baz",
+		assertFolderExists: "assets/foo/bar/baz",
 	}, {
-		description: "file created successfully (with sitePrefix)",
+		description: "folder created successfully (with sitePrefix)",
 		testFS: &TestFS{fstest.MapFS{
 			"~bokwoon/assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
@@ -917,14 +918,14 @@ func Test_POST_createFolder(t *testing.T) {
 		sitePrefix:    "~bokwoon",
 		request: Request{
 			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
+			Name:         "baz",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
+			Name:         "baz",
 		},
-		wantLocation:     "/~bokwoon/admin/assets/foo/bar/baz.js",
-		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
+		wantLocation:       "/~bokwoon/admin/assets/foo/bar/baz",
+		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
 	}}
 
 	for _, tt := range tests {
@@ -968,13 +969,16 @@ func Test_POST_createFolder(t *testing.T) {
 				t.Error(testutil.Callers(), diff)
 			}
 			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFileExists)
+				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFileExists)
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFolderExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
+				}
+				if !fileInfo.IsDir() {
+					t.Fatal(testutil.Callers(), "file was created but is not a directory")
 				}
 			}
 			// === HTML form === //
@@ -1044,13 +1048,16 @@ func Test_POST_createFolder(t *testing.T) {
 				}
 			}
 			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFileExists)
+				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFileExists)
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFolderExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
+				}
+				if !fileInfo.IsDir() {
+					t.Fatal(testutil.Callers(), "file was created but is not a directory")
 				}
 			}
 		})
