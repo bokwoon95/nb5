@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -280,63 +279,62 @@ func Test_GET_createFile(t *testing.T) {
 
 func Test_POST_createFile(t *testing.T) {
 	type Request struct {
-		FilePath         string `json:"file_path,omitempty"`
-		ParentFolderPath string `json:"parent_folder_path,omitempty"`
-		FileName         string `json:"file_name,omitempty"`
+		ParentFolder string `json:"parent_folder,omitempty"`
+		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		FileAlreadyExists      string   `json:"file_already_exists,omitempty"`
-		Errors                 []string `json:"errors,omitempty"`
-		ParentFolderPath       string   `json:"parent_folder_path,omitempty"`
-		ParentFolderPathErrors []string `json:"parent_folder_path_errors,omitempty"`
-		FileName               string   `json:"file_name,omitempty"`
-		FileNameErrors         []string `json:"file_name_errors,omitempty"`
-		FilePath               string   `json:"file_path,omitempty"`
-		FilePathErrors         []string `json:"file_path_errors,omitempty"`
+		ParentFolder       string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
+		Name               string   `json:"name,omitempty"`
+		NameErrors         []string `json:"name_errors,omitempty"`
+		Error              []string `json:"error,omitempty"`
+		FileAlreadyExists  string   `json:"file_already_exists,omitempty"`
 	}
 	type TestTable struct {
-		description          string   // test description
-		testFS               *TestFS  // Notebrew.FS
-		multisiteMode        string   // Notebrew.MultisiteMode
-		sitePrefix           string   // sitePrefix argument
-		request              Request  // request payload
-		response             Response // response payload
-		wantLocation         string   // HTTP response Location header
-		assertFilePathExists string   // file path that should be asserted for existence if response has no errors
+		description      string   // test description
+		testFS           *TestFS  // Notebrew.FS
+		multisiteMode    string   // Notebrew.MultisiteMode
+		sitePrefix       string   // sitePrefix argument
+		request          Request  // request payload
+		wantResponse     Response // response payload
+		wantLocation     string   // HTTP response Location header
+		assertFileExists string   // file that should be asserted for existence if response has no errors
 	}
 
 	tests := []TestTable{{
-		description: "missing arguments",
+		description: "empty",
 		testFS:      &TestFS{fstest.MapFS{}},
-		request:     Request{},
-		response: Response{
-			Errors: []string{"missing arguments"},
+		request: Request{
+			ParentFolder: "",
+			Name:         "",
+		},
+		wantResponse: Response{
+			ParentFolder: "",
+			ParentFolderErrors: []string{
+				"parent folder has to start with posts, notes, pages, templates or assets",
+			},
+			Name: "",
+			NameErrors: []string{
+				"cannot be empty",
+			},
 		},
 	}, {
 		description: "name validation error",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			FilePath:         "/FOO///BAR/baz#$%&.md",
-			ParentFolderPath: "/FOO///BAR/",
-			FileName:         "baz#$%&.md",
+			ParentFolder: "/FOO///BAR/",
+			Name:         "baz#$%&.md",
 		},
-		response: Response{
-			FilePath: "/FOO///BAR/baz#$%&.md",
-			FilePathErrors: []string{
-				"cannot have leading slash",
-				"cannot have multiple slashes next to each other",
-				"no uppercase letters [A-Z] allowed",
-				"forbidden characters: #$%&",
-			},
-			ParentFolderPath: "/FOO///BAR/",
-			ParentFolderPathErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "/FOO///BAR/",
+			ParentFolderErrors: []string{
 				"cannot have leading slash",
 				"cannot have trailing slash",
 				"cannot have multiple slashes next to each other",
 				"no uppercase letters [A-Z] allowed",
 			},
-			FileName: "baz#$%&.md",
-			FileNameErrors: []string{
+			Name: "baz#$%&.md",
+			NameErrors: []string{
 				"forbidden characters: #$%&",
 			},
 		},
@@ -344,20 +342,15 @@ func Test_POST_createFile(t *testing.T) {
 		description: "path doesn't start with posts, notes, pages, templates or assets",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			FilePath:         "foo/bar/baz.md",
-			ParentFolderPath: "foo/bar",
-			FileName:         "baz.md",
+			ParentFolder: "foo/bar",
+			Name:         "baz.md",
 		},
-		response: Response{
-			FilePath: "foo/bar/baz.md",
-			FilePathErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "foo/bar",
+			ParentFolderErrors: []string{
 				"path has to start with posts, notes, pages, templates or assets",
 			},
-			ParentFolderPath: "foo/bar",
-			ParentFolderPathErrors: []string{
-				"path has to start with posts, notes, pages, templates or assets",
-			},
-			FileName: "baz.md",
+			Name: "baz.md",
 		},
 	}, {
 		description: "post path cannot be created",
@@ -365,20 +358,15 @@ func Test_POST_createFile(t *testing.T) {
 			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "posts/foo/bar/baz.md",
-			ParentFolderPath: "posts/foo/bar",
-			FileName:         "baz.md",
+			ParentFolder: "posts/foo/bar",
+			Name:         "baz.md",
 		},
-		response: Response{
-			FilePath: "posts/foo/bar/baz.md",
-			FilePathErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "posts/foo/bar",
+			ParentFolderErrors: []string{
 				"cannot create a file here",
 			},
-			ParentFolderPath: "posts/foo/bar",
-			ParentFolderPathErrors: []string{
-				"cannot create a file here",
-			},
-			FileName: "baz.md",
+			Name: "baz.md",
 		},
 	}, {
 		description: "note path cannot be created",
@@ -386,20 +374,15 @@ func Test_POST_createFile(t *testing.T) {
 			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "notes/foo/bar/baz.md",
-			ParentFolderPath: "notes/foo/bar",
-			FileName:         "baz.md",
+			ParentFolder: "notes/foo/bar",
+			Name:         "baz.md",
 		},
-		response: Response{
-			FilePath: "notes/foo/bar/baz.md",
-			FilePathErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "notes/foo/bar",
+			ParentFolderErrors: []string{
 				"cannot create a file here",
 			},
-			ParentFolderPath: "notes/foo/bar",
-			ParentFolderPathErrors: []string{
-				"cannot create a file here",
-			},
-			FileName: "baz.md",
+			Name: "baz.md",
 		},
 	}, {
 		description: "post filename doesnt end in .md",
@@ -407,18 +390,13 @@ func Test_POST_createFile(t *testing.T) {
 			"posts": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "posts/baz.sh",
-			ParentFolderPath: "posts",
-			FileName:         "baz.sh",
+			ParentFolder: "posts",
+			Name:         "baz.sh",
 		},
-		response: Response{
-			FilePath: "posts/baz.sh",
-			FilePathErrors: []string{
-				"invalid extension (must end in .md)",
-			},
-			ParentFolderPath: "posts",
-			FileName:         "baz.sh",
-			FileNameErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "posts",
+			Name:         "baz.sh",
+			NameErrors: []string{
 				"invalid extension (must end in .md)",
 			},
 		},
@@ -428,18 +406,13 @@ func Test_POST_createFile(t *testing.T) {
 			"notes": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "notes/baz.sh",
-			ParentFolderPath: "notes",
-			FileName:         "baz.sh",
+			ParentFolder: "notes",
+			Name:         "baz.sh",
 		},
-		response: Response{
-			FilePath: "notes/baz.sh",
-			FilePathErrors: []string{
-				"invalid extension (must end in .md)",
-			},
-			ParentFolderPath: "notes",
-			FileName:         "baz.sh",
-			FileNameErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "notes",
+			Name:         "baz.sh",
+			NameErrors: []string{
 				"invalid extension (must end in .md)",
 			},
 		},
@@ -449,18 +422,13 @@ func Test_POST_createFile(t *testing.T) {
 			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "pages/foo/bar/baz.sh",
-			ParentFolderPath: "pages/foo/bar",
-			FileName:         "baz.sh",
+			ParentFolder: "pages/foo/bar",
+			Name:         "baz.sh",
 		},
-		response: Response{
-			FilePath: "pages/foo/bar/baz.sh",
-			FilePathErrors: []string{
-				"invalid extension (must end in .html)",
-			},
-			ParentFolderPath: "pages/foo/bar",
-			FileName:         "baz.sh",
-			FileNameErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "pages/foo/bar",
+			Name:         "baz.sh",
+			NameErrors: []string{
 				"invalid extension (must end in .html)",
 			},
 		},
@@ -470,18 +438,13 @@ func Test_POST_createFile(t *testing.T) {
 			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "templates/foo/bar/baz.sh",
-			ParentFolderPath: "templates/foo/bar",
-			FileName:         "baz.sh",
+			ParentFolder: "templates/foo/bar",
+			Name:         "baz.sh",
 		},
-		response: Response{
-			FilePath: "templates/foo/bar/baz.sh",
-			FilePathErrors: []string{
-				"invalid extension (must end in .html)",
-			},
-			ParentFolderPath: "templates/foo/bar",
-			FileName:         "baz.sh",
-			FileNameErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "templates/foo/bar",
+			Name:         "baz.sh",
+			NameErrors: []string{
 				"invalid extension (must end in .html)",
 			},
 		},
@@ -491,18 +454,13 @@ func Test_POST_createFile(t *testing.T) {
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "assets/foo/bar/baz.sh",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.sh",
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.sh",
 		},
-		response: Response{
-			FilePath: "assets/foo/bar/baz.sh",
-			FilePathErrors: []string{
-				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
-			},
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.sh",
-			FileNameErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.sh",
+			NameErrors: []string{
 				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
 		},
@@ -510,20 +468,15 @@ func Test_POST_createFile(t *testing.T) {
 		description: "parent folder doesnt exist",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		response: Response{
-			FilePath: "assets/foo/bar/baz.js",
-			FilePathErrors: []string{
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			ParentFolderErrors: []string{
 				"parent folder does not exist",
 			},
-			ParentFolderPath: "assets/foo/bar",
-			ParentFolderPathErrors: []string{
-				"parent folder does not exist",
-			},
-			FileName: "baz.js",
+			Name: "baz.js",
 		},
 	}, {
 		description: "file already exists",
@@ -532,17 +485,15 @@ func Test_POST_createFile(t *testing.T) {
 			"assets/foo/bar/baz.js": &fstest.MapFile{},
 		}},
 		request: Request{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		response: Response{
+		wantResponse: Response{
+			ParentFolder:      "assets/foo/bar",
+			Name:              "baz.js",
 			FileAlreadyExists: "/admin/assets/foo/bar/baz.js",
-			FilePath:          "assets/foo/bar/baz.js",
-			ParentFolderPath:  "assets/foo/bar",
-			FileName:          "baz.js",
 		},
-		assertFilePathExists: "assets/foo/bar/baz.js",
+		assertFileExists: "assets/foo/bar/baz.js",
 	}, {
 		description: "file already exists (with sitePrefix)",
 		testFS: &TestFS{fstest.MapFS{
@@ -552,34 +503,30 @@ func Test_POST_createFile(t *testing.T) {
 		multisiteMode: "subdirectory",
 		sitePrefix:    "~bokwoon",
 		request: Request{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		response: Response{
+		wantResponse: Response{
+			ParentFolder:      "assets/foo/bar",
+			Name:              "baz.js",
 			FileAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
-			FilePath:          "assets/foo/bar/baz.js",
-			ParentFolderPath:  "assets/foo/bar",
-			FileName:          "baz.js",
 		},
-		assertFilePathExists: "~bokwoon/assets/foo/bar/baz.js",
+		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
 	}, {
 		description: "file created successfully",
 		testFS: &TestFS{fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		response: Response{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		wantLocation:         "/admin/assets/foo/bar/baz.js",
-		assertFilePathExists: "assets/foo/bar/baz.js",
+		wantLocation:     "/admin/assets/foo/bar/baz.js",
+		assertFileExists: "assets/foo/bar/baz.js",
 	}, {
 		description: "file created successfully (with sitePrefix)",
 		testFS: &TestFS{fstest.MapFS{
@@ -588,24 +535,22 @@ func Test_POST_createFile(t *testing.T) {
 		multisiteMode: "subdirectory",
 		sitePrefix:    "~bokwoon",
 		request: Request{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		response: Response{
-			FilePath:         "assets/foo/bar/baz.js",
-			ParentFolderPath: "assets/foo/bar",
-			FileName:         "baz.js",
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			Name:         "baz.js",
 		},
-		wantLocation:         "/~bokwoon/admin/assets/foo/bar/baz.js",
-		assertFilePathExists: "~bokwoon/assets/foo/bar/baz.js",
+		wantLocation:     "/~bokwoon/admin/assets/foo/bar/baz.js",
+		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
 	}}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
-			// === JSON, file_path === //
+			// === JSON === //
 			nbrew := &Notebrew{
 				FS:            tt.testFS.Clone(),
 				DB:            newDatabase(t),
@@ -615,9 +560,7 @@ func Test_POST_createFile(t *testing.T) {
 				ContentDomain: "notebrew.blog",
 				MultisiteMode: tt.multisiteMode,
 			}
-			b, err := json.Marshal(Request{
-				FilePath: tt.request.FilePath,
-			})
+			b, err := json.Marshal(tt.request)
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
@@ -640,88 +583,20 @@ func Test_POST_createFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
-			wantResponse := Response{
-				FileAlreadyExists: tt.response.FileAlreadyExists,
-				Errors:            tt.response.Errors,
-				FilePath:          tt.response.FilePath,
-				FilePathErrors:    tt.response.FilePathErrors,
-			}
-			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
-				t.Fatal(testutil.Callers(), diff)
-			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
-				if err != nil {
-					if errors.Is(err, fs.ErrNotExist) {
-						names := make([]string, 0, len(tt.testFS.MapFS))
-						for name := range nbrew.FS.(*TestFS).MapFS {
-							names = append(names, name)
-						}
-						sort.Strings(names)
-						t.Fatalf(testutil.Callers()+"%q was not created (available files: %#v)", tt.assertFilePathExists, names)
-					} else {
-						t.Fatal(testutil.Callers(), err)
-					}
-				}
-			}
-			// === JSON, parent_folder_path + file_name === //
-			nbrew = &Notebrew{
-				FS:            tt.testFS.Clone(),
-				DB:            newDatabase(t),
-				Dialect:       sq.DialectSQLite,
-				Scheme:        "https://",
-				AdminDomain:   "notebrew.com",
-				ContentDomain: "notebrew.blog",
-				MultisiteMode: tt.multisiteMode,
-			}
-			b, err = json.Marshal(Request{
-				ParentFolderPath: tt.request.ParentFolderPath,
-				FileName:         tt.request.FileName,
-			})
-			if err != nil {
-				t.Fatal(testutil.Callers(), err)
-			}
-			r, err = http.NewRequest("POST", "", bytes.NewReader(b))
-			if err != nil {
-				t.Fatal(testutil.Callers(), err)
-			}
-			r.Header = http.Header{
-				"Content-Type": []string{"application/json"},
-				"Accept":       []string{"application/json"},
-			}
-			w = httptest.NewRecorder()
-			nbrew.createFile(w, r, tt.sitePrefix)
-			result = w.Result()
-			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
-				t.Fatal(testutil.Callers(), diff, w.Body.String())
-			}
-			gotResponse = Response{}
-			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
-			if err != nil {
-				t.Fatal(testutil.Callers(), err)
-			}
-			wantResponse = Response{
-				FileAlreadyExists:      tt.response.FileAlreadyExists,
-				Errors:                 tt.response.Errors,
-				ParentFolderPath:       tt.response.ParentFolderPath,
-				ParentFolderPathErrors: tt.response.ParentFolderPathErrors,
-				FileName:               tt.response.FileName,
-				FileNameErrors:         tt.response.FileNameErrors,
-			}
-			if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
+			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
+				_, err := fs.Stat(nbrew.FS, tt.assertFileExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFilePathExists)
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFileExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
 				}
 			}
-			// === HTML form, file_path === //
+			// === HTML form === //
 			nbrew = &Notebrew{
 				FS:            tt.testFS.Clone(),
 				DB:            newDatabase(t),
@@ -732,7 +607,8 @@ func Test_POST_createFile(t *testing.T) {
 				MultisiteMode: tt.multisiteMode,
 			}
 			values := url.Values{
-				"file_path": []string{tt.request.FilePath},
+				"parent_folder": []string{tt.request.ParentFolder},
+				"name":          []string{tt.request.Name},
 			}
 			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
 			if err != nil {
@@ -748,88 +624,6 @@ func Test_POST_createFile(t *testing.T) {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
 			}
 			gotLocation := result.Header.Get("location")
-			if gotLocation == "/" {
-				// http.Redirect converts empty strings to a "/" Location
-				// header, so we treat "/" redirects as if it were an empty
-				// string.
-				gotLocation = ""
-			}
-			if diff := testutil.Diff(gotLocation, tt.wantLocation); diff != "" {
-				t.Fatal(testutil.Callers(), diff, w.Body.String())
-			}
-			if gotLocation == "" {
-				r, err := http.NewRequest("GET", "", nil)
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				var b strings.Builder
-				for _, cookie := range result.Cookies() {
-					if b.Len() > 0 {
-						b.WriteString("; ")
-					}
-					c := &http.Cookie{
-						Name:  cookie.Name,
-						Value: cookie.Value,
-					}
-					b.WriteString(c.String())
-				}
-				r.Header.Set("Cookie", b.String())
-				var gotResponse Response
-				ok, err := nbrew.getSession(r, "flash_session", &gotResponse)
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				if !ok {
-					t.Fatal(testutil.Callers(), "no session set")
-				}
-				wantResponse := Response{
-					FileAlreadyExists: tt.response.FileAlreadyExists,
-					Errors:            tt.response.Errors,
-					FilePath:          tt.response.FilePath,
-					FilePathErrors:    tt.response.FilePathErrors,
-				}
-				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
-					t.Fatal(testutil.Callers(), diff)
-				}
-			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
-				if err != nil {
-					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFilePathExists)
-					} else {
-						t.Fatal(testutil.Callers(), err)
-					}
-				}
-			}
-			// === HTML form, parent_folder_path + file_name === //
-			nbrew = &Notebrew{
-				FS:            tt.testFS.Clone(),
-				DB:            newDatabase(t),
-				Dialect:       sq.DialectSQLite,
-				Scheme:        "https://",
-				AdminDomain:   "notebrew.com",
-				ContentDomain: "notebrew.blog",
-				MultisiteMode: tt.multisiteMode,
-			}
-			values = url.Values{
-				"parent_folder_path": []string{tt.request.ParentFolderPath},
-				"file_name":          []string{tt.request.FileName},
-			}
-			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
-			if err != nil {
-				t.Fatal(testutil.Callers(), err)
-			}
-			r.Header = http.Header{
-				"Content-Type": []string{"application/x-www-form-urlencoded"},
-			}
-			w = httptest.NewRecorder()
-			nbrew.createFile(w, r, tt.sitePrefix)
-			result = w.Result()
-			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
-				t.Fatal(testutil.Callers(), diff, w.Body.String())
-			}
-			gotLocation = result.Header.Get("location")
 			if gotLocation == "/" {
 				// http.Redirect converts empty strings to a "/" Location
 				// header, so we treat "/" redirects as if it were an empty
@@ -864,23 +658,15 @@ func Test_POST_createFile(t *testing.T) {
 				if !ok {
 					t.Fatal(testutil.Callers(), "no session set")
 				}
-				wantResponse = Response{
-					FileAlreadyExists:      tt.response.FileAlreadyExists,
-					Errors:                 tt.response.Errors,
-					ParentFolderPath:       tt.response.ParentFolderPath,
-					ParentFolderPathErrors: tt.response.ParentFolderPathErrors,
-					FileName:               tt.response.FileName,
-					FileNameErrors:         tt.response.FileNameErrors,
-				}
-				if diff := testutil.Diff(gotResponse, wantResponse); diff != "" {
+				if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
 					t.Fatal(testutil.Callers(), diff)
 				}
 			}
-			if len(gotResponse.Errors) == 0 && len(gotResponse.FilePathErrors) == 0 && len(gotResponse.ParentFolderPathErrors) == 0 && len(gotResponse.FileNameErrors) == 0 {
-				_, err := fs.Stat(nbrew.FS, tt.assertFilePathExists)
+			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
+				_, err := fs.Stat(nbrew.FS, tt.assertFileExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFilePathExists)
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFileExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
