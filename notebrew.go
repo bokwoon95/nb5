@@ -47,11 +47,9 @@ var bufPool = sync.Pool{
 // TODO: Use a gzipPool with compression level 4 instead of instantiating a new gzipWriter every time.
 var gzipPool sync.Pool
 
-// ErrUnwritable indicates that the filesystem cannot be written to.
-//
-// It is returned by the functions OpenWriter, RemoveAll and WalkDir to
-// indicate that the underlying fs.FS does not support the method.
-var ErrUnwritable = errors.New("filesystem cannot be written to")
+// ErrUnsupported indicates that a requested operation cannot be performed,
+// because it is unsupported.
+var ErrUnsupported = errors.New("unsupported operation")
 
 // Notebrew represents a notebrew instance.
 type Notebrew struct {
@@ -131,7 +129,7 @@ func OpenWriter(fsys fs.FS, name string, perm fs.FileMode) (io.WriteCloser, erro
 	if fsys, ok := fsys.(WriteFS); ok {
 		return fsys.OpenWriter(name, perm)
 	}
-	return nil, ErrUnwritable
+	return nil, ErrUnsupported
 }
 
 // WriteFile writes the data into a file in the file system.
@@ -156,7 +154,7 @@ func MkdirAll(fsys fs.FS, path string, perm fs.FileMode) error {
 	if fsys, ok := fsys.(MkdirAllFS); ok {
 		return fsys.MkdirAll(path, perm)
 	}
-	return ErrUnwritable
+	return ErrUnsupported
 }
 
 // RemoveAll removes all files from the file system with prefix matching the
@@ -165,7 +163,7 @@ func RemoveAll(fsys fs.FS, path string) error {
 	if fsys, ok := fsys.(RemoveAllFS); ok {
 		return fsys.RemoveAll(path)
 	}
-	return ErrUnwritable
+	return ErrUnsupported
 }
 
 // TODO: Document this.
@@ -173,7 +171,7 @@ func Move(fsys fs.FS, oldpath, newpath string) error {
 	if fsys, ok := fsys.(MoveFS); ok {
 		return fsys.Move(oldpath, newpath)
 	}
-	return ErrUnwritable
+	return ErrUnsupported
 }
 
 func (nbrew *Notebrew) IsKeyViolation(err error) bool {
@@ -501,9 +499,6 @@ var forbiddenNameSet = map[string]struct{}{
 }
 
 func validateName(errmsgs []string, name string) []string {
-	if name == "" {
-		return []string{"cannot be empty"}
-	}
 	var forbiddenChars strings.Builder
 	hasUppercaseChar := false
 	writtenChar := make(map[rune]struct{})
@@ -543,12 +538,12 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		FileAlreadyExists  string   `json:"file_already_exists,omitempty"`
-		Errors             []string `json:"errors,omitempty"`
 		ParentFolder       string   `json:"parent_folder,omitempty"`
 		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
 		Name               string   `json:"name,omitempty"`
 		NameErrors         []string `json:"name_errors,omitempty"`
+		Error              string   `json:"error,omitempty"`
+		FileAlreadyExists  string   `json:"file_already_exists,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -577,6 +572,9 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		if !ok {
 			response.ParentFolder = r.Form.Get("parent_folder")
 			response.Name = r.Form.Get("name")
+		}
+		if response.ParentFolder != "" {
+			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
 		}
 		nbrew.clearSession(w, r, "flash_session")
 		tmpl, err := template.ParseFS(rootFS, "html/create_file.html")
@@ -608,7 +606,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				w.Write(b)
 				return
 			}
-			if response.FileAlreadyExists != "" || len(response.Errors) > 0 || len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
+			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.FileAlreadyExists != "" {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -657,9 +655,10 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			request.Name = r.Form.Get("name")
 		}
 
-		response := Response{
-			ParentFolder: strings.Trim(path.Clean(request.ParentFolder), "/"),
-			Name:         request.Name,
+		var response Response
+		response.Name = request.Name
+		if request.ParentFolder != "" {
+			response.ParentFolder = strings.Trim(path.Clean(request.ParentFolder), "/")
 		}
 		head, tail, _ := strings.Cut(response.ParentFolder, "/")
 
@@ -667,7 +666,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 		} else if (head == "posts" || head == "notes") && strings.Contains(tail, "/") {
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden from creating a file in this folder")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden parent folder")
 		}
 
 		if (head == "posts" || head == "notes") && response.Name == "" {
@@ -716,7 +715,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "folder does not exist")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
 			writeResponse(w, r, response)
 			return
 		}
@@ -739,8 +738,8 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 
 		writer, err := OpenWriter(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name), 0644)
 		if err != nil {
-			if errors.Is(err, ErrUnwritable) {
-				response.Errors = append(response.Errors, err.Error())
+			if errors.Is(err, ErrUnsupported) {
+				response.Error = "unable to create file"
 				writeResponse(w, r, response)
 				return
 			}
@@ -766,12 +765,12 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		FolderAlreadyExists string   `json:"folder_already_exists,omitempty"`
-		Errors              []string `json:"errors,omitempty"`
 		ParentFolder        string   `json:"parent_folder,omitempty"`
 		ParentFolderErrors  []string `json:"parent_folder_errors,omitempty"`
 		Name                string   `json:"name,omitempty"`
 		NameErrors          []string `json:"name_errors,omitempty"`
+		Error               string   `json:"error,omitempty"`
+		FolderAlreadyExists string   `json:"folder_already_exists,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -831,7 +830,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 				w.Write(b)
 				return
 			}
-			if response.FolderAlreadyExists != "" || len(response.Errors) > 0 || len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
+			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.FolderAlreadyExists != "" {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -881,35 +880,36 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		}
 
 		response := Response{
-			ParentFolder: request.ParentFolder,
+			ParentFolder: strings.Trim(path.Clean(request.ParentFolder), "/"),
 			Name:         request.Name,
 		}
 		head, tail, _ := strings.Cut(response.ParentFolder, "/")
 
-		if response.ParentFolder == "" {
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "cannot be empty")
-		} else if (head == "posts" || head == "notes") && tail != "" {
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden from creating a file in this folder")
-		} else if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
+		if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
+		} else if (head == "posts" || head == "notes") && tail != "" {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden parent folder")
 		}
+
+		if response.Name == "" {
+			response.NameErrors = append(response.NameErrors, "cannot be empty")
+		} else {
+			response.NameErrors = validateName(response.NameErrors, response.Name)
+		}
+
 		if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
 			writeResponse(w, r, response)
 			return
 		}
 
-		resource, _, _ := strings.Cut(response.ParentFolder, "/")
-		switch resource {
-		case "posts", "notes":
-			if strings.Contains(response.ParentFolder, "/") {
-				response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden from creating a folder here")
-				writeResponse(w, r, response)
+		_, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder))
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-		case "pages", "templates", "assets":
-			break
-		default:
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
 			writeResponse(w, r, response)
 			return
 		}
@@ -936,8 +936,8 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 
 		err = MkdirAll(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name), 0755)
 		if err != nil {
-			if errors.Is(err, ErrUnwritable) {
-				response.Errors = append(response.Errors, err.Error())
+			if errors.Is(err, ErrUnsupported) {
+				response.Error = "unable to create folder"
 				writeResponse(w, r, response)
 				return
 			}

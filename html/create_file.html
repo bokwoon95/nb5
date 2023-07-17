@@ -12,49 +12,30 @@
         <a href="{{ .FileAlreadyExists }}" itemprop="file_already_exists">{{ .FileAlreadyExists }}</a>
     </div>
     {{- end }}
-    {{- if .Errors }}
-    <ul>
-        {{- range $error := .Errors }}
-        <li itemprop="errors">{{ $error }}</li>
-        {{- end }}
-    </ul>
+    {{- if .Error }}
+    <div itemprop="error">{{ .Error }}</div>
     {{- end }}
-    {{- if .ParentFolderPath }}
-    <input type="hidden" name="parent_folder_path" value="{{ .ParentFolderPath }}" itemprop="parent_folder_path">
+    <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
     <div>
-        <div>Parent folder: {{ .ParentFolderPath }}</div>
-        {{- if .ParentFolderPathErrors }}
+        <div>Parent folder: {{ .ParentFolder }}</div>
+        {{- if .ParentFolderErrors }}
         <ul>
-            {{- range $error := .ParentFolderPathErrors }}
-            <li itemprop="parent_folder_path_errors">{{ $error }}</li>
+            {{- range $error := .ParentFolderErrors }}
+            <li itemprop="parent_folder_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
     </div>
     <div>
-        <label for="file_name" class="db">File name</label>
+        <label for="name" class="db">File name</label>
         <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_name" name="file_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FileName }}" required itemprop="file_name">
-        {{- if .FileNameErrors }}
+        <input id="name" name="name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .Name }}" required itemprop="name">
+        {{- if .NameErrors }}
         <ul>
-            {{- range $error := .FileNameErrors }}
-            <li itemprop="file_name_errors">{{ $error }}</li>
+            {{- range $error := .NameErrors }}
+            <li itemprop="name_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
     </div>
-    {{- else }}
-    <div>
-        <label for="file_path" class="db">File path</label>
-        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="file_path" name="file_path" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .FilePath }}" required itemprop="file_path">
-        {{- if .FilePathErrors }}
-        <ul>
-            {{- range $error := .FilePathErrors }}
-            <li itemprop="file_path_errors">{{ $error }}</li>
-            {{- end }}
-        </ul>
-        {{- end }}
-    </div>
-    {{- end }}
 </form>

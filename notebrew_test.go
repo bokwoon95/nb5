@@ -46,12 +46,6 @@ func Test_validateName(t *testing.T) {
 	}
 
 	tests := []TestTable{{
-		description: "empty",
-		name:        "",
-		wantErrs: []string{
-			"cannot be empty",
-		},
-	}, {
 		description: "uppercase and forbidden characters",
 		name:        "<<IN>>DEX?.HTML",
 		wantErrs: []string{
@@ -103,12 +97,24 @@ func Test_validateName(t *testing.T) {
 }
 
 func Test_GET_createFile(t *testing.T) {
+	type Session struct {
+		sessionTokenHash []byte
+		data             []byte
+	}
 	type TestTable struct {
-		description   string           // test description
-		seedQueries   []sq.CustomQuery // SQL queries to seed database with
-		header        http.Header      // request header
-		rawQuery      string           // request GET query parameters
-		wantItemprops url.Values       // itemprops extracted from parsing html response
+		description      string         // test description
+		databaseSessions []Session      // sessions that the database starts off with
+		rawQuery         string         // request GET query parameters
+		cookies          []*http.Cookie // request cookies
+		wantItemprops    url.Values     // itemprops extracted from parsing html response
+	}
+
+	jsonify := func(v any) []byte {
+		b, err := json.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return b
 	}
 
 	var (
@@ -119,76 +125,65 @@ func Test_GET_createFile(t *testing.T) {
 	tests := []TestTable{{
 		description: "basic",
 		wantItemprops: url.Values{
-			"file_path": []string{""},
+			"parent_folder": []string{""},
+			"name":          []string{""},
 		},
 	}, {
-		description: "parent_folder_path and file_name provided",
-		rawQuery:    "parent_folder_path=foo/bar&file_name=baz.md&file_path=xxx",
+		description: "parent_folder and name provided",
+		rawQuery:    "parent_folder=/foo/bar/&name=baz.md",
 		wantItemprops: url.Values{
-			"parent_folder_path": []string{"foo/bar"},
-			"file_name":          []string{"baz.md"},
+			"parent_folder": []string{"foo/bar"},
+			"name":          []string{"baz.md"},
 		},
 	}, {
-		description: "file_path provided",
-		rawQuery:    "file_path=foo/bar/baz.md",
-		wantItemprops: url.Values{
-			"file_path": []string{"foo/bar/baz.md"},
-		},
-	}, {
-		description: "parent_folder_path + file_name errors",
-		seedQueries: []sq.CustomQuery{{
-			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
-			Values: []any{
-				sessionTokenHash,
-				sq.JSONValue(map[string]any{
-					"parent_folder_path": "/FOO///BAR/",
-					"parent_folder_path_errors": []string{
-						"cannot have leading slash",
-						"cannot have trailing slash",
-						"cannot have multiple slashes next to each other",
-						"no uppercase letters [A-Z] allowed",
-					},
-					"file_name": "baz#$%&.md",
-					"file_name_errors": []string{
-						"forbidden characters: #$%&",
-					},
-				}),
-			},
+		description: "session errors",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"parent_folder": "",
+				"parent_folder_errors": []string{
+					"parent folder has to start with posts, notes, pages, templates or assets",
+				},
+				"name": "bAz#$%&.md",
+				"name_errors": []string{
+					"no uppercase letters [A-Z] allowed",
+					"forbidden characters: #$%&",
+				},
+			}),
 		}},
-		header: http.Header{
-			"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken), "0")},
-		},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
 		wantItemprops: url.Values{
-			"parent_folder_path": []string{"/FOO///BAR/"},
-			"parent_folder_path_errors": []string{
-				"cannot have leading slash",
-				"cannot have trailing slash",
-				"cannot have multiple slashes next to each other",
-				"no uppercase letters [A-Z] allowed",
+			"parent_folder": []string{""},
+			"parent_folder_errors": []string{
+				"parent folder has to start with posts, notes, pages, templates or assets",
 			},
-			"file_name": []string{"baz#$%&.md"},
-			"file_name_errors": []string{
+			"name": []string{"bAz#$%&.md"},
+			"name_errors": []string{
+				"no uppercase letters [A-Z] allowed",
 				"forbidden characters: #$%&",
 			},
 		},
 	}, {
 		description: "file already exists",
-		seedQueries: []sq.CustomQuery{{
-			Format: "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
-			Values: []any{
-				sessionTokenHash,
-				sq.JSONValue(map[string]any{
-					"file_already_exists": "/admin/assets/foo/bar/baz.js",
-					"file_path":           "assets/foo/bar/baz.js",
-				}),
-			},
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"parent_folder":       "assets/foo/bar",
+				"name":                "baz.js",
+				"file_already_exists": "/admin/assets/foo/bar/baz.js",
+			}),
 		}},
-		header: http.Header{
-			"Cookie": []string{"flash_session=" + strings.TrimLeft(hex.EncodeToString(sessionToken), "0")},
-		},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
 		wantItemprops: url.Values{
+			"parent_folder":       []string{"assets/foo/bar"},
+			"name":                []string{"baz.js"},
 			"file_already_exists": []string{"/admin/assets/foo/bar/baz.js"},
-			"file_path":           []string{"assets/foo/bar/baz.js"},
 		},
 	}}
 
@@ -205,8 +200,12 @@ func Test_GET_createFile(t *testing.T) {
 				ContentDomain: "notebrew.blog",
 				MultisiteMode: "subdomain",
 			}
-			for _, seedQuery := range tt.seedQueries {
-				_, err := sq.Exec(nbrew.DB, seedQuery)
+			for _, session := range tt.databaseSessions {
+				_, err := sq.Exec(nbrew.DB, sq.CustomQuery{
+					Dialect: nbrew.Dialect,
+					Format:  "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
+					Values:  []any{session.sessionTokenHash, session.data},
+				})
 				if err != nil {
 					t.Fatal(testutil.Callers(), err)
 				}
@@ -215,7 +214,16 @@ func Test_GET_createFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(testutil.Callers(), err)
 			}
-			r.Header = tt.header
+			if len(tt.cookies) > 0 {
+				var b strings.Builder
+				for _, cookie := range tt.cookies {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					b.WriteString(cookie.String())
+				}
+				r.Header.Set("Cookie", b.String())
+			}
 			r.URL.RawQuery = tt.rawQuery
 			w := httptest.NewRecorder()
 			nbrew.createFile(w, r, "")
