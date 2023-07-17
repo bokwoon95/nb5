@@ -667,7 +667,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 		} else if (head == "posts" || head == "notes") && strings.Contains(tail, "/") {
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden parent folder")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "not allowed to use this parent folder")
 		}
 
 		if (head == "posts" || head == "notes") && response.Name == "" {
@@ -892,7 +892,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 		} else if (head == "posts" || head == "notes") && tail != "" {
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden parent folder")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "not allowed to use this parent folder")
 		}
 
 		if response.Name == "" {

@@ -319,148 +319,54 @@ func Test_POST_createFile(t *testing.T) {
 			},
 		},
 	}, {
-		description: "name validation error",
+		description: "posts errors",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			ParentFolder: "/FOO///BAR/",
-			Name:         "baz#$%&.md",
+			ParentFolder: "/posts/foo/bar/",
+			Name:         "bAz#$%&.exe",
 		},
 		wantResponse: Response{
-			ParentFolder: "/FOO///BAR/",
+			ParentFolder: "posts/foo/bar",
 			ParentFolderErrors: []string{
-				"cannot have leading slash",
-				"cannot have trailing slash",
-				"cannot have multiple slashes next to each other",
+				"not allowed to use this parent folder",
+			},
+			Name: "bAz#$%&.exe",
+			NameErrors: []string{
 				"no uppercase letters [A-Z] allowed",
-			},
-			Name: "baz#$%&.md",
-			NameErrors: []string{
 				"forbidden characters: #$%&",
+				"invalid extension (must end in .md)",
 			},
 		},
 	}, {
-		description: "path doesn't start with posts, notes, pages, templates or assets",
+		description: "pages errors",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			ParentFolder: "foo/bar",
-			Name:         "baz.md",
-		},
-		wantResponse: Response{
-			ParentFolder: "foo/bar",
-			ParentFolderErrors: []string{
-				"path has to start with posts, notes, pages, templates or assets",
-			},
-			Name: "baz.md",
-		},
-	}, {
-		description: "post path cannot be created",
-		testFS: &TestFS{fstest.MapFS{
-			"posts/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "posts/foo/bar",
-			Name:         "baz.md",
-		},
-		wantResponse: Response{
-			ParentFolder: "posts/foo/bar",
-			ParentFolderErrors: []string{
-				"cannot create a file here",
-			},
-			Name: "baz.md",
-		},
-	}, {
-		description: "note path cannot be created",
-		testFS: &TestFS{fstest.MapFS{
-			"notes/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "notes/foo/bar",
-			Name:         "baz.md",
-		},
-		wantResponse: Response{
-			ParentFolder: "notes/foo/bar",
-			ParentFolderErrors: []string{
-				"cannot create a file here",
-			},
-			Name: "baz.md",
-		},
-	}, {
-		description: "post filename doesnt end in .md",
-		testFS: &TestFS{fstest.MapFS{
-			"posts": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "posts",
-			Name:         "baz.sh",
-		},
-		wantResponse: Response{
-			ParentFolder: "posts",
-			Name:         "baz.sh",
-			NameErrors: []string{
-				"invalid extension (must end in .md)",
-			},
-		},
-	}, {
-		description: "note filename doesnt end in .md",
-		testFS: &TestFS{fstest.MapFS{
-			"notes": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "notes",
-			Name:         "baz.sh",
-		},
-		wantResponse: Response{
-			ParentFolder: "notes",
-			Name:         "baz.sh",
-			NameErrors: []string{
-				"invalid extension (must end in .md)",
-			},
-		},
-	}, {
-		description: "page filename doesnt end in .html",
-		testFS: &TestFS{fstest.MapFS{
-			"pages/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "pages/foo/bar",
-			Name:         "baz.sh",
+			ParentFolder: "/pages/foo/bar/",
+			Name:         "bAz#$%&.exe",
 		},
 		wantResponse: Response{
 			ParentFolder: "pages/foo/bar",
-			Name:         "baz.sh",
+			Name:         "bAz#$%&.exe",
 			NameErrors: []string{
+				"no uppercase letters [A-Z] allowed",
+				"forbidden characters: #$%&",
 				"invalid extension (must end in .html)",
 			},
 		},
 	}, {
-		description: "template filename doesnt end in .html",
-		testFS: &TestFS{fstest.MapFS{
-			"templates/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
+		description: "assets errors",
+		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			ParentFolder: "templates/foo/bar",
-			Name:         "baz.sh",
+			ParentFolder: "/assets/foo/bar/",
+			Name:         "bAz#$%&.exe",
 		},
 		wantResponse: Response{
-			ParentFolder: "templates/foo/bar",
-			Name:         "baz.sh",
+			ParentFolder:       "assets/foo/bar",
+			ParentFolderErrors: []string{},
+			Name:               "bAz#$%&.exe",
 			NameErrors: []string{
-				"invalid extension (must end in .html)",
-			},
-		},
-	}, {
-		description: "asset filename doesnt have valid extension",
-		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "assets/foo/bar",
-			Name:         "baz.sh",
-		},
-		wantResponse: Response{
-			ParentFolder: "assets/foo/bar",
-			Name:         "baz.sh",
-			NameErrors: []string{
+				"no uppercase letters [A-Z] allowed",
+				"forbidden characters: #$%&",
 				"invalid extension (must be one of: .html, .css, .js, .md, .txt, .jpeg, .jpg, .png, .gif, .svg, .ico, .eof, .ttf, .woff, .woff2, .csv, .tsv, .json, .xml, .toml, .yaml, .yml)",
 			},
 		},
