@@ -655,14 +655,15 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			request.Name = r.Form.Get("name")
 		}
 
-		var response Response
-		response.Name = request.Name
-		if request.ParentFolder != "" {
-			response.ParentFolder = strings.Trim(path.Clean(request.ParentFolder), "/")
+		response := Response{
+			Name:         request.Name,
+			ParentFolder: request.ParentFolder,
+		}
+		if response.ParentFolder != "" {
+			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
 		}
 		head, tail, _ := strings.Cut(response.ParentFolder, "/")
 
-		// TODO: Add a test case where parent_folder is an empty string which gets path.Clean()-ed into "." which should trip the "parent folder has to start with posts, notes, pages, templates or assets" error.
 		if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 		} else if (head == "posts" || head == "notes") && strings.Contains(tail, "/") {
@@ -799,6 +800,9 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		if !ok {
 			response.ParentFolder = r.Form.Get("parent_folder")
 			response.Name = r.Form.Get("name")
+		}
+		if response.ParentFolder != "" {
+			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
 		}
 		nbrew.clearSession(w, r, "flash_session")
 		tmpl, err := template.ParseFS(rootFS, "html/create_folder.html")
