@@ -136,7 +136,7 @@ func Test_GET_createFile(t *testing.T) {
 			"name":          []string{"baz.md"},
 		},
 	}, {
-		description: "session errors",
+		description: "input errors",
 		databaseSessions: []Session{{
 			sessionTokenHash: sessionTokenHash,
 			data: jsonify(map[string]any{
@@ -184,6 +184,23 @@ func Test_GET_createFile(t *testing.T) {
 			"parent_folder":       []string{"assets/foo/bar"},
 			"name":                []string{"baz.js"},
 			"file_already_exists": []string{"/admin/assets/foo/bar/baz.js"},
+		},
+	}, {
+		description: "error",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"error": "lorem ipsum dolor sit amet",
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"error":         []string{"lorem ipsum dolor sit amet"},
+			"parent_folder": []string{""},
+			"name":          []string{""},
 		},
 	}}
 
