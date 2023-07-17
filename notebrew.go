@@ -656,8 +656,8 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		}
 
 		response := Response{
-			Name:         request.Name,
 			ParentFolder: request.ParentFolder,
+			Name:         request.Name,
 		}
 		if response.ParentFolder != "" {
 			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
