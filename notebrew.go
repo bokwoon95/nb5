@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"text/template/parse"
@@ -32,6 +31,7 @@ import (
 	"github.com/bokwoon95/sq"
 	"github.com/oklog/ulid/v2"
 	"golang.org/x/crypto/blake2b"
+	"golang.org/x/exp/slices"
 	"golang.org/x/exp/slog"
 )
 
@@ -500,7 +500,7 @@ var forbiddenNameSet = map[string]struct{}{
 	"lpt6": {}, "lpt7": {}, "lpt8": {}, "lpt9": {},
 }
 
-func validateName(name string) (errmsgs []string) {
+func validateName(errmsgs []string, name string) []string {
 	if name == "" {
 		return []string{"cannot be empty"}
 	}
@@ -533,74 +533,11 @@ func validateName(name string) (errmsgs []string) {
 	return errmsgs
 }
 
-func validatePath(path string) (errmsgs []string) {
-	if path == "" {
-		return []string{"cannot be empty"}
-	}
-	if strings.HasPrefix(path, "/") {
-		errmsgs = append(errmsgs, "cannot have leading slash")
-	}
-	if strings.HasSuffix(path, "/") {
-		errmsgs = append(errmsgs, "cannot have trailing slash")
-	}
-	if strings.Contains(path, "//") {
-		errmsgs = append(errmsgs, "cannot have multiple slashes next to each other")
-	}
-	var forbiddenChars strings.Builder
-	var forbiddenNames []string
-	var dotSuffixNames []string
-	hasUppercaseChar := false
-	writtenChar := make(map[rune]struct{})
-	writtenName := make(map[string]struct{})
-	name, tail, _ := strings.Cut(path, "/")
-	for name != "" || tail != "" {
-		for _, char := range name {
-			if _, ok := uppercaseCharSet[char]; ok {
-				hasUppercaseChar = true
-			}
-			if _, ok := forbiddenCharSet[char]; ok {
-				if _, ok := writtenChar[char]; !ok {
-					writtenChar[char] = struct{}{}
-					forbiddenChars.WriteRune(char)
-				}
-			}
-		}
-		if len(name) > 0 && name[len(name)-1] == '.' {
-			if _, ok := writtenName[name]; !ok {
-				writtenName[name] = struct{}{}
-				dotSuffixNames = append(dotSuffixNames, strconv.Quote(name))
-			}
-		}
-		if _, ok := forbiddenNameSet[strings.ToLower(name)]; ok {
-			if _, ok := writtenName[name]; !ok {
-				writtenName[name] = struct{}{}
-				forbiddenNames = append(forbiddenNames, strconv.Quote(name))
-			}
-		}
-		name, tail, _ = strings.Cut(tail, "/")
-	}
-	if hasUppercaseChar {
-		errmsgs = append(errmsgs, "no uppercase letters [A-Z] allowed")
-	}
-	if forbiddenChars.Len() > 0 {
-		errmsgs = append(errmsgs, "forbidden characters: "+forbiddenChars.String())
-	}
-	if len(dotSuffixNames) > 0 {
-		errmsgs = append(errmsgs, "name(s) cannot end in dot: "+strings.Join(dotSuffixNames, ", "))
-	}
-	if len(forbiddenNames) > 0 {
-		errmsgs = append(errmsgs, "forbidden name(s): "+strings.Join(forbiddenNames, ", "))
-	}
-	return errmsgs
-}
-
 type contextKey struct{}
 
 var loggerKey = &contextKey{}
 
 func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePrefix string) {
-	// TODO: change the request and response to remove the file_path argument
-	// and update all the tests + implementation accordingly.
 	type Request struct {
 		ParentFolder string `json:"parent_folder,omitempty"`
 		Name         string `json:"name,omitempty"`
@@ -642,7 +579,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			response.Name = r.Form.Get("name")
 		}
 		nbrew.clearSession(w, r, "flash_session")
-		tmpl, err := template.ParseFS(rootFS, "html/create.html")
+		tmpl, err := template.ParseFS(rootFS, "html/create_file.html")
 		if err != nil {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -720,73 +657,54 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			request.Name = r.Form.Get("name")
 		}
 
-		// TODO: allow empty request.Name only if parent folder is posts or
-		// notes (for autogeneration of post id).
-		if request.ParentFolder == "" && request.Name == "" {
-			writeResponse(w, r, Response{
-				Errors: []string{"missing arguments"},
-			})
-			return
-		}
-
 		response := Response{
-			ParentFolder:       request.ParentFolder,
-			ParentFolderErrors: validatePath(request.ParentFolder),
-			Name:               request.Name,
-			NameErrors:         validateName(request.Name),
+			ParentFolder: strings.Trim(path.Clean(request.ParentFolder), "/"),
+			Name:         request.Name,
 		}
-		if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
-			writeResponse(w, r, response)
-			return
+		head, tail, _ := strings.Cut(response.ParentFolder, "/")
+
+		// TODO: Add a test case where parent_folder is an empty string which gets path.Clean()-ed into "." which should trip the "parent folder has to start with posts, notes, pages, templates or assets" error.
+		if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
+		} else if (head == "posts" || head == "notes") && strings.Contains(tail, "/") {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden from creating a file in this folder")
 		}
 
-		resource, _, _ := strings.Cut(response.ParentFolder, "/")
-		switch resource {
-		case "posts", "notes":
-			if strings.Count(response.ParentFolder, "/") > 1 {
-				response.ParentFolderErrors = append(response.ParentFolderErrors, "cannot create a file here")
-				writeResponse(w, r, response)
-				return
-			}
-			if response.Name == "" {
-				response.Name = strings.ToLower(ulid.Make().String()) + ".md"
-			}
-			if path.Ext(response.Name) != ".md" {
-				response.NameErrors = append(response.NameErrors, "invalid extension (must end in .md)")
-				writeResponse(w, r, response)
-				return
-			}
-		case "pages", "templates":
-			if path.Ext(response.Name) != ".html" {
-				response.NameErrors = append(response.NameErrors, "invalid extension (must end in .html)")
-				writeResponse(w, r, response)
-				return
-			}
-		case "assets":
-			ext := path.Ext(response.Name)
-			if ext == ".gz" {
-				ext = path.Ext(strings.TrimSuffix(response.Name, ext))
-			}
-			allowedExts := []string{
-				".html", ".css", ".js", ".md", ".txt",
-				".jpeg", ".jpg", ".png", ".gif", ".svg", ".ico",
-				".eof", ".ttf", ".woff", ".woff2",
-				".csv", ".tsv", ".json", ".xml", ".toml", ".yaml", ".yml",
-			}
-			match := false
-			for _, allowedExt := range allowedExts {
-				if ext == allowedExt {
-					match = true
-					break
+		if (head == "posts" || head == "notes") && response.Name == "" {
+			response.Name = strings.ToLower(ulid.Make().String()) + ".md"
+		}
+
+		if response.Name == "" {
+			response.NameErrors = append(response.NameErrors, "cannot be empty")
+		} else {
+			response.NameErrors = validateName(response.NameErrors, response.Name)
+			switch head {
+			case "posts", "notes":
+				if path.Ext(response.Name) != ".md" {
+					response.NameErrors = append(response.NameErrors, "invalid extension (must end in .md)")
+				}
+			case "pages", "templates":
+				if path.Ext(response.Name) != ".html" {
+					response.NameErrors = append(response.NameErrors, "invalid extension (must end in .html)")
+				}
+			case "assets":
+				ext := path.Ext(response.Name)
+				if ext == ".gz" {
+					ext = path.Ext(strings.TrimSuffix(response.Name, ext))
+				}
+				allowedExts := []string{
+					".html", ".css", ".js", ".md", ".txt",
+					".jpeg", ".jpg", ".png", ".gif", ".svg", ".ico",
+					".eof", ".ttf", ".woff", ".woff2",
+					".csv", ".tsv", ".json", ".xml", ".toml", ".yaml", ".yml",
+				}
+				if !slices.Contains(allowedExts, ext) {
+					response.NameErrors = append(response.NameErrors, fmt.Sprintf("invalid extension (must be one of: %s)", strings.Join(allowedExts, ", ")))
 				}
 			}
-			if !match {
-				response.NameErrors = append(response.NameErrors, fmt.Sprintf("invalid extension (must be one of: %s)", strings.Join(allowedExts, ", ")))
-				writeResponse(w, r, response)
-				return
-			}
-		default:
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
+		}
+
+		if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
 			writeResponse(w, r, response)
 			return
 		}
@@ -798,7 +716,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "folder does not exist")
 			writeResponse(w, r, response)
 			return
 		}
@@ -842,7 +760,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 	}
 }
 
-func (nbrew *Notebrew) mkdir(w http.ResponseWriter, r *http.Request, sitePrefix string) {
+func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	type Request struct {
 		ParentFolder string `json:"parent_folder,omitempty"`
 		Name         string `json:"name,omitempty"`
@@ -884,7 +802,7 @@ func (nbrew *Notebrew) mkdir(w http.ResponseWriter, r *http.Request, sitePrefix 
 			response.Name = r.Form.Get("name")
 		}
 		nbrew.clearSession(w, r, "flash_session")
-		tmpl, err := template.ParseFS(rootFS, "html/mkdir.html")
+		tmpl, err := template.ParseFS(rootFS, "html/create_folder.html")
 		if err != nil {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -962,17 +880,18 @@ func (nbrew *Notebrew) mkdir(w http.ResponseWriter, r *http.Request, sitePrefix 
 			request.Name = r.Form.Get("name")
 		}
 
-		if request.ParentFolder == "" || request.Name == "" {
-			writeResponse(w, r, Response{
-				Errors: []string{"missing arguments"},
-			})
-			return
-		}
 		response := Response{
-			ParentFolder:       request.ParentFolder,
-			ParentFolderErrors: validatePath(request.ParentFolder),
-			Name:               request.Name,
-			NameErrors:         validateName(request.Name),
+			ParentFolder: request.ParentFolder,
+			Name:         request.Name,
+		}
+		head, tail, _ := strings.Cut(response.ParentFolder, "/")
+
+		if response.ParentFolder == "" {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "cannot be empty")
+		} else if (head == "posts" || head == "notes") && tail != "" {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "forbidden from creating a file in this folder")
+		} else if head != "posts" && head != "notes" && head != "pages" && head != "templates" && head != "assets" {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder has to start with posts, notes, pages, templates or assets")
 		}
 		if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 {
 			writeResponse(w, r, response)

@@ -94,66 +94,7 @@ func Test_validateName(t *testing.T) {
 		tt := tt
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
-			gotErrs := validateName(tt.name)
-			if diff := testutil.Diff(gotErrs, tt.wantErrs); diff != "" {
-				t.Error(testutil.Callers(), diff)
-			}
-		})
-	}
-}
-
-func Test_validatePath(t *testing.T) {
-	type TestTable struct {
-		description string
-		path        string
-		wantErrs    []string
-	}
-
-	tests := []TestTable{{
-		description: "empty",
-		path:        "",
-		wantErrs: []string{
-			"cannot be empty",
-		},
-	}, {
-		description: "slashes",
-		path:        "/a/b//c/index.html/",
-		wantErrs: []string{
-			"cannot have leading slash",
-			"cannot have trailing slash",
-			"cannot have multiple slashes next to each other",
-		},
-	}, {
-		description: "uppercase and forbidden characters",
-		path:        "<<FOLDER/INDEX?.HTML>>",
-		wantErrs: []string{
-			"no uppercase letters [A-Z] allowed",
-			"forbidden characters: <?>",
-		},
-	}, {
-		description: "uppercase and forbidden name",
-		path:        "FOLDER/COM1/cOn/lpT9",
-		wantErrs: []string{
-			"no uppercase letters [A-Z] allowed",
-			`forbidden name(s): "COM1", "cOn", "lpT9"`,
-		},
-	}, {
-		description: "dot",
-		path:        "foo/../bar././baz/.",
-		wantErrs: []string{
-			`name(s) cannot end in dot: "..", "bar.", "."`,
-		},
-	}, {
-		description: "ok",
-		path:        "apple/banana/cherry",
-		wantErrs:    nil,
-	}}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.description, func(t *testing.T) {
-			t.Parallel()
-			gotErrs := validatePath(tt.path)
+			gotErrs := validateName(nil, tt.name)
 			if diff := testutil.Diff(gotErrs, tt.wantErrs); diff != "" {
 				t.Error(testutil.Callers(), diff)
 			}
