@@ -755,7 +755,6 @@ func Test_GET_createFolder(t *testing.T) {
 }
 
 func Test_POST_createFolder(t *testing.T) {
-	t.Skip()
 	type Request struct {
 		ParentFolder string `json:"parent_folder,omitempty"`
 		Name         string `json:"name,omitempty"`
@@ -955,7 +954,7 @@ func Test_POST_createFolder(t *testing.T) {
 				"Accept":       []string{"application/json"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.createFile(w, r, tt.sitePrefix)
+			nbrew.createFolder(w, r, tt.sitePrefix)
 			result := w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -1003,7 +1002,7 @@ func Test_POST_createFolder(t *testing.T) {
 				"Content-Type": []string{"application/x-www-form-urlencoded"},
 			}
 			w = httptest.NewRecorder()
-			nbrew.createFile(w, r, tt.sitePrefix)
+			nbrew.createFolder(w, r, tt.sitePrefix)
 			result = w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
