@@ -12,12 +12,8 @@
         <a href="{{ .FolderAlreadyExists }}" itemprop="folder_already_exists">{{ .FolderAlreadyExists }}</a>
     </div>
     {{- end }}
-    {{- if .Errors }}
-    <ul>
-        {{- range $error := .Errors }}
-        <li itemprop="errors">{{ $error }}</li>
-        {{- end }}
-    </ul>
+    {{- if .Error }}
+    <div itemprop="error">{{ .Error }}</div>
     {{- end }}
     <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
     <div>
