@@ -44,11 +44,11 @@
     <div>
         <label for="new_name" class="db">New name</label>
         <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
-        <input id="name" name="name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .Name }}" required itemprop="name">
+        <input id="new_name" name="new_name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .Name }}" required itemprop="new_name">
         {{- if .NameErrors }}
         <ul>
             {{- range $error := .NameErrors }}
-            <li itemprop="name_errors">{{ $error }}</li>
+            <li itemprop="new_name_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
