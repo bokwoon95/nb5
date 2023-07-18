@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="/admin/static/lib/tachyons.min.css.gz">
 <link rel="stylesheet" href="/admin/static/styles.css">
 <title>Create folder</title>
+<h1>Create folder</h1>
 <form method="post">
     {{- if .AlreadyExists }}
     <div>
@@ -15,9 +16,14 @@
     {{- if .Error }}
     <div itemprop="error">{{ .Error }}</div>
     {{- end }}
-    <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
     <div>
+        {{- if .ParentFolder }}
         <div>Parent folder: {{ .ParentFolder }}</div>
+        <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
+        {{- else }}
+        <label for="parent_folder" class="db">Parent folder</label>
+        <input id="parent_folder" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
+        {{- end }}
         {{- if .ParentFolderErrors }}
         <ul>
             {{- range $error := .ParentFolderErrors }}
