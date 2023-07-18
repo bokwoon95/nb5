@@ -606,10 +606,10 @@ func Test_GET_createFolder(t *testing.T) {
 		},
 	}, {
 		description: "parent_folder and name provided",
-		rawQuery:    "parent_folder=/foo/bar/&name=baz.md",
+		rawQuery:    "parent_folder=/foo/bar/&name=baz",
 		wantItemprops: url.Values{
 			"parent_folder": []string{"foo/bar"},
-			"name":          []string{"baz.md"},
+			"name":          []string{"baz"},
 		},
 	}, {
 		description: "input errors",
@@ -1046,6 +1046,7 @@ func Test_POST_createFolder(t *testing.T) {
 }
 
 func Test_GET_rename(t *testing.T) {
+	t.Skip()
 	type Session struct {
 		sessionTokenHash []byte
 		data             []byte
@@ -1056,6 +1057,167 @@ func Test_GET_rename(t *testing.T) {
 		rawQuery         string         // request GET query parameters
 		cookies          []*http.Cookie // request cookies
 		wantItemprops    url.Values     // itemprops extracted from parsing html response
+	}
+
+	var (
+		sessionToken     = newToken(time.Now())
+		sessionTokenHash = hashToken(sessionToken)
+	)
+
+	tests := []TestTable{{
+		description: "basic",
+		wantItemprops: url.Values{
+			"parent_folder": []string{""},
+			"old_name":      []string{""},
+			"new_name":      []string{""},
+		},
+	}, {
+		description: "parent_folder and old_name provided",
+		rawQuery:    "parent_folder=/foo/bar/&old_name=baz.md",
+		wantItemprops: url.Values{
+			"parent_folder": []string{"foo/bar"},
+			"name":          []string{"baz.md"},
+		},
+	}, {
+		description: "input errors",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"parent_folder": "",
+				"parent_folder_errors": []string{
+					"parent folder has to start with posts, notes, pages, templates or assets",
+				},
+				"name": "bAz#$%&",
+				"name_errors": []string{
+					"no uppercase letters [A-Z] allowed",
+					"forbidden characters: #$%&",
+				},
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"parent_folder": []string{""},
+			"parent_folder_errors": []string{
+				"parent folder has to start with posts, notes, pages, templates or assets",
+			},
+			"name": []string{"bAz#$%&"},
+			"name_errors": []string{
+				"no uppercase letters [A-Z] allowed",
+				"forbidden characters: #$%&",
+			},
+		},
+	}, {
+		description: "folder already exists",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"parent_folder":  "assets/foo/bar",
+				"name":           "baz",
+				"already_exists": "/admin/assets/foo/bar/baz",
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"parent_folder":  []string{"assets/foo/bar"},
+			"name":           []string{"baz"},
+			"already_exists": []string{"/admin/assets/foo/bar/baz"},
+		},
+	}, {
+		description: "error",
+		databaseSessions: []Session{{
+			sessionTokenHash: sessionTokenHash,
+			data: jsonify(map[string]any{
+				"error": "lorem ipsum dolor sit amet",
+			}),
+		}},
+		cookies: []*http.Cookie{{
+			Name:  "flash_session",
+			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
+		}},
+		wantItemprops: url.Values{
+			"error":         []string{"lorem ipsum dolor sit amet"},
+			"parent_folder": []string{""},
+			"name":          []string{""},
+		},
+	}}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Parallel()
+			nbrew := &Notebrew{
+				FS:            TestFS{fstest.MapFS{}},
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: "subdomain",
+			}
+			for _, session := range tt.databaseSessions {
+				_, err := sq.Exec(nbrew.DB, sq.CustomQuery{
+					Dialect: nbrew.Dialect,
+					Format:  "INSERT INTO sessions (session_token_hash, data) VALUES ({}, {})",
+					Values:  []any{session.sessionTokenHash, session.data},
+				})
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+			}
+			r, err := http.NewRequest("GET", "", nil)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			if len(tt.cookies) > 0 {
+				var b strings.Builder
+				for _, cookie := range tt.cookies {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					b.WriteString(cookie.String())
+				}
+				r.Header.Set("Cookie", b.String())
+			}
+			r.URL.RawQuery = tt.rawQuery
+			w := httptest.NewRecorder()
+			nbrew.createFolder(w, r, "")
+			response := w.Result()
+			body := w.Body.String()
+			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, body)
+			}
+			gotItemprops, err := getItemprops(body)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err, body)
+			}
+			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
+				t.Error(testutil.Callers(), diff, body)
+			}
+			cookie, _ := r.Cookie("flash_session")
+			if cookie != nil {
+				sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				var sessionTokenHash [8 + blake2b.Size256]byte
+				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+				copy(sessionTokenHash[:8], sessionToken[:8])
+				copy(sessionTokenHash[8:], checksum[:])
+				exists, err := sq.FetchExists(nbrew.DB, sq.CustomQuery{
+					Format: "SELECT 1 FROM sessions WHERE session_token_hash = {}",
+					Values: []any{sessionTokenHash[:]},
+				})
+				if exists {
+					t.Errorf(testutil.Callers() + " session not cleared")
+				}
+			}
+		})
 	}
 }
 
