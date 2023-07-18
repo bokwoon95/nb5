@@ -856,9 +856,9 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 			}
 			var redirectURL string
 			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
+				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name) + "/"
 			} else {
-				redirectURL = "/" + path.Join("admin", response.ParentFolder, response.Name)
+				redirectURL = "/" + path.Join("admin", response.ParentFolder, response.Name) + "/"
 			}
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 		}
@@ -892,8 +892,11 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		}
 
 		response := Response{
-			ParentFolder: strings.Trim(path.Clean(request.ParentFolder), "/"),
+			ParentFolder: request.ParentFolder,
 			Name:         request.Name,
+		}
+		if response.ParentFolder != "" {
+			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
 		}
 		head, tail, _ := strings.Cut(response.ParentFolder, "/")
 
@@ -957,6 +960,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+		writeResponse(w, r, response)
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}

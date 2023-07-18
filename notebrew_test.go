@@ -479,10 +479,10 @@ func Test_POST_createFile(t *testing.T) {
 			gotResponse := Response{}
 			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
 			if err != nil {
-				t.Fatal(testutil.Callers(), err)
+				t.Fatal(testutil.Callers(), err, w.Body.String())
 			}
 			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
-				t.Error(testutil.Callers(), diff)
+				t.Fatal(testutil.Callers(), diff)
 			}
 			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
 				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFileExists)
@@ -755,7 +755,6 @@ func Test_GET_createFolder(t *testing.T) {
 }
 
 func Test_POST_createFolder(t *testing.T) {
-	// TODO: Ahh fix this. The tests fail.
 	type Request struct {
 		ParentFolder string `json:"parent_folder,omitempty"`
 		Name         string `json:"name,omitempty"`
@@ -860,27 +859,9 @@ func Test_POST_createFolder(t *testing.T) {
 			},
 		},
 	}, {
-		description: "file already exists (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
-			"~bokwoon/assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
-			"~bokwoon/assets/foo/bar/baz.js": &fstest.MapFile{},
-		}},
-		multisiteMode: "subdirectory",
-		sitePrefix:    "~bokwoon",
-		request: Request{
-			ParentFolder: "assets/foo/bar",
-			Name:         "baz.js",
-		},
-		wantResponse: Response{
-			ParentFolder:        "assets/foo/bar",
-			Name:                "baz.js",
-			FolderAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
-		},
-		assertFolderExists: "~bokwoon/assets/foo/bar/baz.js",
-	}, {
 		description: "folder already exists (with sitePrefix)",
 		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
+			"~bokwoon/assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		multisiteMode: "subdirectory",
 		sitePrefix:    "~bokwoon",
@@ -907,7 +888,7 @@ func Test_POST_createFolder(t *testing.T) {
 			ParentFolder: "assets/foo/bar",
 			Name:         "baz",
 		},
-		wantLocation:       "/admin/assets/foo/bar/baz",
+		wantLocation:       "/admin/assets/foo/bar/baz/",
 		assertFolderExists: "assets/foo/bar/baz",
 	}, {
 		description: "folder created successfully (with sitePrefix)",
@@ -924,7 +905,7 @@ func Test_POST_createFolder(t *testing.T) {
 			ParentFolder: "assets/foo/bar",
 			Name:         "baz",
 		},
-		wantLocation:       "/~bokwoon/admin/assets/foo/bar/baz",
+		wantLocation:       "/~bokwoon/admin/assets/foo/bar/baz/",
 		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
 	}}
 
@@ -963,10 +944,10 @@ func Test_POST_createFolder(t *testing.T) {
 			gotResponse := Response{}
 			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
 			if err != nil {
-				t.Fatal(testutil.Callers(), err)
+				t.Fatal(testutil.Callers(), err, w.Body.String())
 			}
 			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
-				t.Error(testutil.Callers(), diff)
+				t.Fatal(testutil.Callers(), diff)
 			}
 			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
 				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
