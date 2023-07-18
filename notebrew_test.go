@@ -247,24 +247,7 @@ func Test_GET_createFile(t *testing.T) {
 			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
 				t.Error(testutil.Callers(), diff, body)
 			}
-			cookie, _ := r.Cookie("flash_session")
-			if cookie != nil {
-				sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				var sessionTokenHash [8 + blake2b.Size256]byte
-				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-				copy(sessionTokenHash[:8], sessionToken[:8])
-				copy(sessionTokenHash[8:], checksum[:])
-				exists, err := sq.FetchExists(nbrew.DB, sq.CustomQuery{
-					Format: "SELECT 1 FROM sessions WHERE session_token_hash = {}",
-					Values: []any{sessionTokenHash[:]},
-				})
-				if exists {
-					t.Errorf(testutil.Callers() + " session not cleared")
-				}
-			}
+			assertSessionCleared(t, r, "flash_session", nbrew.DB)
 		})
 	}
 }
@@ -732,24 +715,7 @@ func Test_GET_createFolder(t *testing.T) {
 			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
 				t.Error(testutil.Callers(), diff, body)
 			}
-			cookie, _ := r.Cookie("flash_session")
-			if cookie != nil {
-				sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				var sessionTokenHash [8 + blake2b.Size256]byte
-				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-				copy(sessionTokenHash[:8], sessionToken[:8])
-				copy(sessionTokenHash[8:], checksum[:])
-				exists, err := sq.FetchExists(nbrew.DB, sq.CustomQuery{
-					Format: "SELECT 1 FROM sessions WHERE session_token_hash = {}",
-					Values: []any{sessionTokenHash[:]},
-				})
-				if exists {
-					t.Errorf(testutil.Callers() + " session not cleared")
-				}
-			}
+			assertSessionCleared(t, r, "flash_session", nbrew.DB)
 		})
 	}
 }
@@ -1187,24 +1153,7 @@ func Test_GET_rename(t *testing.T) {
 			if diff := testutil.Diff(gotItemprops, tt.wantItemprops); diff != "" {
 				t.Error(testutil.Callers(), diff, body)
 			}
-			cookie, _ := r.Cookie("flash_session")
-			if cookie != nil {
-				sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
-				if err != nil {
-					t.Fatal(testutil.Callers(), err)
-				}
-				var sessionTokenHash [8 + blake2b.Size256]byte
-				checksum := blake2b.Sum256([]byte(sessionToken[8:]))
-				copy(sessionTokenHash[:8], sessionToken[:8])
-				copy(sessionTokenHash[8:], checksum[:])
-				exists, err := sq.FetchExists(nbrew.DB, sq.CustomQuery{
-					Format: "SELECT 1 FROM sessions WHERE session_token_hash = {}",
-					Values: []any{sessionTokenHash[:]},
-				})
-				if exists {
-					t.Errorf(testutil.Callers() + " session not cleared")
-				}
-			}
+			assertSessionCleared(t, r, "flash_session", nbrew.DB)
 		})
 	}
 }
@@ -1479,6 +1428,27 @@ func getItemprops(body string) (url.Values, error) {
 		nodes = append(nodes, node.NextSibling, node.FirstChild)
 	}
 	return itemprops, nil
+}
+
+func assertSessionCleared(t *testing.T, r *http.Request, name string, db *sql.DB) {
+	cookie, _ := r.Cookie("flash_session")
+	if cookie != nil {
+		sessionToken, err := hex.DecodeString(fmt.Sprintf("%048s", cookie.Value))
+		if err != nil {
+			t.Fatal(testutil.Callers(), err)
+		}
+		var sessionTokenHash [8 + blake2b.Size256]byte
+		checksum := blake2b.Sum256([]byte(sessionToken[8:]))
+		copy(sessionTokenHash[:8], sessionToken[:8])
+		copy(sessionTokenHash[8:], checksum[:])
+		exists, err := sq.FetchExists(db, sq.CustomQuery{
+			Format: "SELECT 1 FROM sessions WHERE session_token_hash = {}",
+			Values: []any{sessionTokenHash[:]},
+		})
+		if exists {
+			t.Errorf(testutil.Callers() + " session not cleared")
+		}
+	}
 }
 
 func jsonify(v any) []byte {
