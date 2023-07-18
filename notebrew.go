@@ -1177,6 +1177,106 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 	}
 }
 
+func (nbrew *Notebrew) move(w http.ResponseWriter, r *http.Request, sitePrefix string) {
+	type Request struct {
+		Path              string `json:"path,omitempty"`
+		DestinationFolder string `json:"destination_folder,omitempty"`
+	}
+	type Response struct {
+		Path                    string   `json:"path,omitempty"`
+		PathErrors              []string `json:"path_errors,omitempty"`
+		DestinationFolder       string   `json:"destination_folder,omitempty"`
+		DestinationFolderErrors []string `json:"destination_folder_errors,omitempty"`
+		Error                   string   `json:"error,omitempty"`
+	}
+
+	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+	if !ok {
+		logger = slog.Default()
+	}
+	logger = logger.With(
+		slog.String("method", r.Method),
+		slog.String("url", r.URL.String()),
+		slog.String("sitePrefix", sitePrefix),
+	)
+	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
+
+	switch r.Method {
+	case "GET":
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+			return
+		}
+		var response Response
+		ok, err := nbrew.getSession(r, "flash_session", &response)
+		if err != nil {
+			logger.Error(err.Error())
+		}
+		if !ok {
+			response.Path = r.Form.Get("path")
+			response.DestinationFolder = r.Form.Get("destination_folder")
+		}
+		if response.Path != "" {
+			response.Path = strings.Trim(path.Clean(response.Path), "/")
+		}
+		if response.DestinationFolder != "" {
+			response.DestinationFolder = strings.Trim(path.Clean(response.DestinationFolder), "/")
+		}
+		nbrew.clearSession(w, r, "flash_session")
+		tmpl, err := template.ParseFS(rootFS, "html/move.html")
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		buf := bufPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufPool.Put(buf)
+		err = tmpl.Execute(buf, &response)
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		buf.WriteTo(w)
+	case "POST":
+		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
+			accept, _, _ := mime.ParseMediaType(r.Header.Get("Accept"))
+			if accept == "application/json" {
+				b, err := json.Marshal(&response)
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				w.Write(b)
+				return
+			}
+			if len(response.PathErrors) > 0 || len(response.DestinationFolderErrors) > 0 || response.Error != "" {
+				err := nbrew.setSession(w, r, &response, &http.Cookie{Name: "flash_session"})
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+				return
+			}
+			var redirectURL string
+			if nbrew.MultisiteMode == "subdirectory" {
+				redirectURL = "/" + path.Join(sitePrefix, "admin", response.DestinationFolder) + "/"
+			} else {
+				redirectURL = "/" + path.Join("admin", response.DestinationFolder) + "/"
+			}
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+		}
+		_ = writeResponse
+	default:
+		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (nbrew *Notebrew) setSession(w http.ResponseWriter, r *http.Request, v any, cookie *http.Cookie) error {
 	dataBytes, ok := v.([]byte)
 	if !ok {

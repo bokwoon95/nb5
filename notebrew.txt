@@ -15,8 +15,8 @@ notes:
 - name
 /admin/rename/
 - parent_folder
-- source_name
-- destination_name
+- old_name
+- new_name
 /admin/move/
 - path
 - destination_folder
