@@ -120,7 +120,7 @@ func Test_GET_createFile(t *testing.T) {
 			"name":          []string{""},
 		},
 	}, {
-		description: "parent_folder and name provided",
+		description: "query params",
 		rawQuery:    "parent_folder=/foo/bar/&name=baz.md",
 		wantItemprops: url.Values{
 			"parent_folder": []string{"foo/bar"},
@@ -605,7 +605,7 @@ func Test_GET_createFolder(t *testing.T) {
 			"name":          []string{""},
 		},
 	}, {
-		description: "parent_folder and name provided",
+		description: "query params",
 		rawQuery:    "parent_folder=/foo/bar/&name=baz",
 		wantItemprops: url.Values{
 			"parent_folder": []string{"foo/bar"},
@@ -1046,7 +1046,6 @@ func Test_POST_createFolder(t *testing.T) {
 }
 
 func Test_GET_rename(t *testing.T) {
-	t.Skip()
 	type Session struct {
 		sessionTokenHash []byte
 		data             []byte
@@ -1072,11 +1071,12 @@ func Test_GET_rename(t *testing.T) {
 			"new_name":      []string{""},
 		},
 	}, {
-		description: "parent_folder and old_name provided",
-		rawQuery:    "parent_folder=/foo/bar/&old_name=baz.md",
+		description: "query params",
+		rawQuery:    "parent_folder=/foo/bar/&old_name=baz.md&new_name=qux.md",
 		wantItemprops: url.Values{
 			"parent_folder": []string{"foo/bar"},
-			"name":          []string{"baz.md"},
+			"old_name":      []string{"baz.md"},
+			"new_name":      []string{"qux.md"},
 		},
 	}, {
 		description: "input errors",
@@ -1085,12 +1085,15 @@ func Test_GET_rename(t *testing.T) {
 			data: jsonify(map[string]any{
 				"parent_folder": "",
 				"parent_folder_errors": []string{
-					"parent folder has to start with posts, notes, pages, templates or assets",
+					"cannot be empty",
 				},
-				"name": "bAz#$%&",
-				"name_errors": []string{
-					"no uppercase letters [A-Z] allowed",
-					"forbidden characters: #$%&",
+				"old_name": "",
+				"old_name_errors": []string{
+					"cannot be empty",
+				},
+				"new_name": "",
+				"new_name_errors": []string{
+					"cannot be empty",
 				},
 			}),
 		}},
@@ -1101,32 +1104,16 @@ func Test_GET_rename(t *testing.T) {
 		wantItemprops: url.Values{
 			"parent_folder": []string{""},
 			"parent_folder_errors": []string{
-				"parent folder has to start with posts, notes, pages, templates or assets",
+				"cannot be empty",
 			},
-			"name": []string{"bAz#$%&"},
-			"name_errors": []string{
-				"no uppercase letters [A-Z] allowed",
-				"forbidden characters: #$%&",
+			"old_name": []string{""},
+			"old_name_errors": []string{
+				"cannot be empty",
 			},
-		},
-	}, {
-		description: "folder already exists",
-		databaseSessions: []Session{{
-			sessionTokenHash: sessionTokenHash,
-			data: jsonify(map[string]any{
-				"parent_folder":  "assets/foo/bar",
-				"name":           "baz",
-				"already_exists": "/admin/assets/foo/bar/baz",
-			}),
-		}},
-		cookies: []*http.Cookie{{
-			Name:  "flash_session",
-			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
-		}},
-		wantItemprops: url.Values{
-			"parent_folder":  []string{"assets/foo/bar"},
-			"name":           []string{"baz"},
-			"already_exists": []string{"/admin/assets/foo/bar/baz"},
+			"new_name": []string{""},
+			"new_name_errors": []string{
+				"cannot be empty",
+			},
 		},
 	}, {
 		description: "error",
@@ -1143,7 +1130,8 @@ func Test_GET_rename(t *testing.T) {
 		wantItemprops: url.Values{
 			"error":         []string{"lorem ipsum dolor sit amet"},
 			"parent_folder": []string{""},
-			"name":          []string{""},
+			"old_name":      []string{""},
+			"new_name":      []string{""},
 		},
 	}}
 
@@ -1186,7 +1174,7 @@ func Test_GET_rename(t *testing.T) {
 			}
 			r.URL.RawQuery = tt.rawQuery
 			w := httptest.NewRecorder()
-			nbrew.createFolder(w, r, "")
+			nbrew.rename(w, r, "")
 			response := w.Result()
 			body := w.Body.String()
 			if diff := testutil.Diff(response.StatusCode, http.StatusOK); diff != "" {
