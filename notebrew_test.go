@@ -262,7 +262,7 @@ func Test_POST_createFile(t *testing.T) {
 		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
 		Name               string   `json:"name,omitempty"`
 		NameErrors         []string `json:"name_errors,omitempty"`
-		Error              []string `json:"error,omitempty"`
+		Error              string   `json:"error,omitempty"`
 		AlreadyExists      string   `json:"already_exists,omitempty"`
 	}
 	type TestTable struct {
@@ -730,7 +730,7 @@ func Test_POST_createFolder(t *testing.T) {
 		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
 		Name               string   `json:"name,omitempty"`
 		NameErrors         []string `json:"name_errors,omitempty"`
-		Error              []string `json:"error,omitempty"`
+		Error              string   `json:"error,omitempty"`
 		AlreadyExists      string   `json:"already_exists,omitempty"`
 	}
 	type TestTable struct {
@@ -915,7 +915,7 @@ func Test_POST_createFolder(t *testing.T) {
 			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
 				t.Fatal(testutil.Callers(), diff)
 			}
-			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
+			if gotResponse.Error == "" && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
 				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -1154,6 +1154,300 @@ func Test_GET_rename(t *testing.T) {
 				t.Error(testutil.Callers(), diff, body)
 			}
 			assertSessionCleared(t, r, "flash_session", nbrew.DB)
+		})
+	}
+}
+
+func Test_POST_rename(t *testing.T) {
+	t.Skip()
+	type Request struct {
+		ParentFolder string `json:"parent_folder,omitempty"`
+		OldName      string `json:"name,omitempty"`
+	}
+	type Response struct {
+		ParentFolder       string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
+		OldName            string   `json:"old_name,omitempty"`
+		OldNameErrors      []string `json:"old_name_errors,omitempty"`
+		NewName            string   `json:"new_name,omitempty"`
+		NewNameErrors      []string `json:"new_name_errors,omitempty"`
+		Error              string   `json:"error,omitempty"`
+	}
+	type TestTable struct {
+		description           string   // test description
+		testFS                *TestFS  // Notebrew.FS
+		multisiteMode         string   // Notebrew.MultisiteMode
+		sitePrefix            string   // sitePrefix argument
+		request               Request  // request payload
+		wantResponse          Response // response payload
+		wantLocation          string   // HTTP response Location header
+		assertFolderExists    string   // folder that should be asserted for existence if response has no errors
+		assertFolderNotExists string   // folder that should be asserted for non-existence if response has no errors
+	}
+
+	tests := []TestTable{{
+		description: "empty",
+		testFS:      &TestFS{fstest.MapFS{}},
+		request: Request{
+			ParentFolder: "",
+			OldName:      "",
+		},
+		wantResponse: Response{
+			ParentFolder: "",
+			ParentFolderErrors: []string{
+				"parent folder has to start with posts, notes, pages, templates or assets",
+			},
+			OldName: "",
+			OldNameErrors: []string{
+				"cannot be empty",
+			},
+		},
+	}, {
+		description: "posts errors",
+		testFS:      &TestFS{fstest.MapFS{}},
+		request: Request{
+			ParentFolder: "/posts/foo/bar/",
+			OldName:      "bAz#$%&",
+		},
+		wantResponse: Response{
+			ParentFolder: "posts/foo/bar",
+			ParentFolderErrors: []string{
+				"not allowed to use this parent folder",
+			},
+			OldName: "bAz#$%&",
+			OldNameErrors: []string{
+				"no uppercase letters [A-Z] allowed",
+				"forbidden characters: #$%&",
+			},
+		},
+	}, {
+		description: "parent folder doesnt exist",
+		testFS:      &TestFS{fstest.MapFS{}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			ParentFolderErrors: []string{
+				"parent folder does not exist",
+			},
+			OldName: "baz",
+		},
+	}, {
+		description: "folder already exists",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+			// AlreadyExists: "/admin/assets/foo/bar/baz",
+		},
+		assertFolderExists: "assets/foo/bar/baz",
+	}, {
+		description: "file with same name already exists",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar/baz": &fstest.MapFile{},
+		}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+			OldNameErrors: []string{
+				"file with the same name already exists",
+			},
+		},
+	}, {
+		description: "folder already exists (with sitePrefix)",
+		testFS: &TestFS{fstest.MapFS{
+			"~bokwoon/assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		multisiteMode: "subdirectory",
+		sitePrefix:    "~bokwoon",
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+			// AlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz",
+		},
+		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
+	}, {
+		description: "folder created successfully",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantLocation:       "/admin/assets/foo/bar/baz/",
+		assertFolderExists: "assets/foo/bar/baz",
+	}, {
+		description: "folder created successfully (with sitePrefix)",
+		testFS: &TestFS{fstest.MapFS{
+			"~bokwoon/assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
+		}},
+		multisiteMode: "subdirectory",
+		sitePrefix:    "~bokwoon",
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz",
+		},
+		wantLocation:       "/~bokwoon/admin/assets/foo/bar/baz/",
+		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
+	}}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.description, func(t *testing.T) {
+			t.Parallel()
+			// === JSON === //
+			nbrew := &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: tt.multisiteMode,
+			}
+			b, err := json.Marshal(tt.request)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r, err := http.NewRequest("POST", "", bytes.NewReader(b))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/json"},
+				"Accept":       []string{"application/json"},
+			}
+			w := httptest.NewRecorder()
+			nbrew.createFolder(w, r, tt.sitePrefix)
+			result := w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			gotResponse := Response{}
+			err = json.Unmarshal(w.Body.Bytes(), &gotResponse)
+			if err != nil {
+				t.Fatal(testutil.Callers(), err, w.Body.String())
+			}
+			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
+				t.Fatal(testutil.Callers(), diff)
+			}
+			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.OldNameErrors) == 0 {
+				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFolderExists)
+					} else {
+						t.Fatal(testutil.Callers(), err)
+					}
+				}
+				if !fileInfo.IsDir() {
+					t.Fatal(testutil.Callers(), "file was created but is not a directory")
+				}
+			}
+			// === HTML form === //
+			nbrew = &Notebrew{
+				FS:            tt.testFS.Clone(),
+				DB:            newDatabase(t),
+				Dialect:       sq.DialectSQLite,
+				Scheme:        "https://",
+				AdminDomain:   "notebrew.com",
+				ContentDomain: "notebrew.blog",
+				MultisiteMode: tt.multisiteMode,
+			}
+			values := url.Values{
+				"parent_folder": []string{tt.request.ParentFolder},
+				"name":          []string{tt.request.OldName},
+			}
+			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
+			if err != nil {
+				t.Fatal(testutil.Callers(), err)
+			}
+			r.Header = http.Header{
+				"Content-Type": []string{"application/x-www-form-urlencoded"},
+			}
+			w = httptest.NewRecorder()
+			nbrew.createFolder(w, r, tt.sitePrefix)
+			result = w.Result()
+			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			gotLocation := result.Header.Get("location")
+			if gotLocation == "/" {
+				// http.Redirect converts empty strings to a "/" Location
+				// header, so we treat "/" redirects as if it were an empty
+				// string.
+				gotLocation = ""
+			}
+			if diff := testutil.Diff(gotLocation, tt.wantLocation); diff != "" {
+				t.Fatal(testutil.Callers(), diff, w.Body.String())
+			}
+			if gotLocation == "" {
+				r, err = http.NewRequest("GET", "", nil)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				var b strings.Builder
+				for _, cookie := range result.Cookies() {
+					if b.Len() > 0 {
+						b.WriteString("; ")
+					}
+					c := &http.Cookie{
+						Name:  cookie.Name,
+						Value: cookie.Value,
+					}
+					b.WriteString(c.String())
+				}
+				r.Header.Set("Cookie", b.String())
+				gotResponse = Response{}
+				ok, err := nbrew.getSession(r, "flash_session", &gotResponse)
+				if err != nil {
+					t.Fatal(testutil.Callers(), err)
+				}
+				if !ok {
+					t.Fatal(testutil.Callers(), "no session set")
+				}
+				if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
+					t.Fatal(testutil.Callers(), diff)
+				}
+			}
+			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.OldNameErrors) == 0 {
+				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFolderExists)
+					} else {
+						t.Fatal(testutil.Callers(), err)
+					}
+				}
+				if !fileInfo.IsDir() {
+					t.Fatal(testutil.Callers(), "file was created but is not a directory")
+				}
+			}
 		})
 	}
 }
