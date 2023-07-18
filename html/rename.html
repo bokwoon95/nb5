@@ -4,14 +4,19 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/admin/static/lib/tachyons.min.css.gz">
 <link rel="stylesheet" href="/admin/static/styles.css">
-<title>Rename resource</title>
+<title>Rename</title>
 <form method="post">
     {{- if .Error }}
     <div itemprop="error">{{ .Error }}</div>
     {{- end }}
-    <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
     <div>
+        {{- if .ParentFolder }}
         <div>Parent folder: {{ .ParentFolder }}</div>
+        <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
+        {{- else }}
+        <label for="parent_folder" class="db">Parent folder</label>
+        <input id="parent_folder" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
+        {{- end }}
         {{- if .ParentFolderErrors }}
         <ul>
             {{- range $error := .ParentFolderErrors }}
@@ -20,19 +25,24 @@
         </ul>
         {{- end }}
     </div>
-    <input type="hidden" name="source_name" value="{{ .SourceName }}" itemprop="source_name">
     <div>
-        <div>Old Name: {{ .SourceName }}</div>
-        {{- if .SourceNameErrors }}
+        {{- if .OldName }}
+        <div>Old name: {{ .OldName }}</div>
+        <input type="hidden" name="old_name" value="{{ .OldName }}" itemprop="old_name">
+        {{- else }}
+        <label for="old_name" class="db">Old name (existing file or folder to rename)</label>
+        <input id="old_name" name="old_name" value="{{ .OldName }}" itemprop="old_name">
+        {{- end }}
+        {{- if .OldNameErrors }}
         <ul>
-            {{- range $error := .ParentFolderErrors }}
-            <li itemprop="parent_folder_errors">{{ $error }}</li>
+            {{- range $error := .OldNameErrors }}
+            <li itemprop="old_name_errors">{{ $error }}</li>
             {{- end }}
         </ul>
         {{- end }}
     </div>
     <div>
-        <label for="name" class="db">Folder name</label>
+        <label for="new_name" class="db">New name</label>
         <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
         <input id="name" name="name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .Name }}" required itemprop="name">
         {{- if .NameErrors }}
@@ -43,4 +53,5 @@
         </ul>
         {{- end }}
     </div>
+    <button>Rename</button>
 </form>
