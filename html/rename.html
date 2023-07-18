@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/admin/static/lib/tachyons.min.css.gz">
+<link rel="stylesheet" href="/admin/static/styles.css">
+<title>Rename resource</title>
+<form method="post">
+    {{- if .Error }}
+    <div itemprop="error">{{ .Error }}</div>
+    {{- end }}
+    <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
+    <div>
+        <div>Parent folder: {{ .ParentFolder }}</div>
+        {{- if .ParentFolderErrors }}
+        <ul>
+            {{- range $error := .ParentFolderErrors }}
+            <li itemprop="parent_folder_errors">{{ $error }}</li>
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
+    <input type="hidden" name="source_name" value="{{ .SourceName }}" itemprop="source_name">
+    <div>
+        <div>Old Name: {{ .SourceName }}</div>
+        {{- if .SourceNameErrors }}
+        <ul>
+            {{- range $error := .ParentFolderErrors }}
+            <li itemprop="parent_folder_errors">{{ $error }}</li>
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
+    <div>
+        <label for="name" class="db">Folder name</label>
+        <pre>Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~</pre>
+        <input id="name" name="name" class="db" pattern="[^ !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~]" title="Forbidden characters: !&quot;#$%&amp;&apos;()*+,/:;&lt;&gt;=?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]\^`{}|~" value="{{ .Name }}" required itemprop="name">
+        {{- if .NameErrors }}
+        <ul>
+            {{- range $error := .NameErrors }}
+            <li itemprop="name_errors">{{ $error }}</li>
+            {{- end }}
+        </ul>
+        {{- end }}
+    </div>
+</form>

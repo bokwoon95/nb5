@@ -968,18 +968,18 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 
 func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix string) {
 	type Request struct {
-		ParentFolder    string `json:"parent_folder,omitempty"`
-		SourceName      string `json:"source_name,omitempty"`
-		DestinationName string `json:"destination_name,omitempty"`
+		ParentFolder string `json:"parent_folder,omitempty"`
+		OldName      string `json:"old_name,omitempty"`
+		NewName      string `json:"new_name,omitempty"`
 	}
 	type Response struct {
-		ParentFolder          string   `json:"parent_folder,omitempty"`
-		ParentFolderErrors    []string `json:"parent_folder_errors,omitempty"`
-		SourceName            string   `json:"source_name,omitempty"`
-		SourceNameErrors      []string `json:"source_name_errors,omitempty"`
-		DestinationName       string   `json:"destination_name,omitempty"`
-		DestinationNameErrors []string `json:"destination_name_errors,omitempty"`
-		Error                 string   `json:"error,omitempty"`
+		ParentFolder       string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
+		OldName            string   `json:"old_name,omitempty"`
+		OldNameErrors      []string `json:"old_name_errors,omitempty"`
+		NewName            string   `json:"new_name,omitempty"`
+		NewNameErrors      []string `json:"new_name_errors,omitempty"`
+		Error              string   `json:"error,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -1007,8 +1007,8 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 		}
 		if !ok {
 			response.ParentFolder = r.Form.Get("parent_folder")
-			response.SourceName = r.Form.Get("source_name")
-			response.DestinationName = r.Form.Get("destination_name")
+			response.OldName = r.Form.Get("old_name")
+			response.NewName = r.Form.Get("new_name")
 		}
 		if response.ParentFolder != "" {
 			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
@@ -1043,7 +1043,7 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) > 0 || len(response.SourceNameErrors) > 0 || len(response.DestinationNameErrors) > 0 || response.Error != "" {
+			if len(response.ParentFolderErrors) > 0 || len(response.OldNameErrors) > 0 || len(response.NewNameErrors) > 0 || response.Error != "" {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -1090,32 +1090,32 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 				return
 			}
 			request.ParentFolder = r.Form.Get("parent_folder")
-			request.SourceName = r.Form.Get("old_name")
-			request.DestinationName = r.Form.Get("new_name")
+			request.OldName = r.Form.Get("old_name")
+			request.NewName = r.Form.Get("new_name")
 		default:
 			http.Error(w, "415 Unsupported Media Type", http.StatusUnsupportedMediaType)
 			return
 		}
 
 		response := Response{
-			ParentFolder:    request.ParentFolder,
-			SourceName:      request.SourceName,
-			DestinationName: request.DestinationName,
+			ParentFolder: request.ParentFolder,
+			OldName:      request.OldName,
+			NewName:      request.NewName,
 		}
 		if response.ParentFolder == "" {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "cannot be empty")
 		} else {
 			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
 		}
-		if response.SourceName == "" {
-			response.SourceNameErrors = append(response.SourceNameErrors, "cannot be empty")
+		if response.OldName == "" {
+			response.OldNameErrors = append(response.OldNameErrors, "cannot be empty")
 		}
-		if response.DestinationName == "" {
-			response.DestinationNameErrors = append(response.DestinationNameErrors, "cannot be empty")
+		if response.NewName == "" {
+			response.NewNameErrors = append(response.NewNameErrors, "cannot be empty")
 		} else {
-			response.DestinationNameErrors = validateName(response.DestinationNameErrors, response.DestinationName)
+			response.NewNameErrors = validateName(response.NewNameErrors, response.NewName)
 		}
-		if len(response.ParentFolderErrors) > 0 || len(response.SourceNameErrors) > 0 || len(response.DestinationNameErrors) > 0 {
+		if len(response.ParentFolderErrors) > 0 || len(response.OldNameErrors) > 0 || len(response.NewNameErrors) > 0 {
 			writeResponse(w, r, response)
 			return
 		}
@@ -1137,10 +1137,10 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 
-		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.SourceName))
+		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.OldName))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				response.SourceNameErrors = append(response.SourceNameErrors, "source file/folder does not exist")
+				response.OldNameErrors = append(response.OldNameErrors, "source file/folder does not exist")
 				writeResponse(w, r, response)
 				return
 			}
@@ -1149,19 +1149,19 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 
-		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.DestinationName))
+		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.NewName))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			logger.Error(err.Error())
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		if err == nil {
-			response.DestinationNameErrors = append(response.DestinationNameErrors, "destination file/folder already exists")
+			response.NewNameErrors = append(response.NewNameErrors, "destination file/folder already exists")
 			writeResponse(w, r, response)
 			return
 		}
 
-		err = Move(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.SourceName), path.Join(sitePrefix, response.ParentFolder, response.DestinationName))
+		err = Move(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.OldName), path.Join(sitePrefix, response.ParentFolder, response.NewName))
 		if err != nil {
 			if errors.Is(err, ErrUnsupported) {
 				response.Error = "unable to rename file/folder"

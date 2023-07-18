@@ -1045,10 +1045,21 @@ func Test_POST_createFolder(t *testing.T) {
 	}
 }
 
-func Test_POST_create_autogenerateID(t *testing.T) {
-	// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and parent_folder_path + file_name)
+func Test_GET_rename(t *testing.T) {
+	type Session struct {
+		sessionTokenHash []byte
+		data             []byte
+	}
+	type TestTable struct {
+		description      string         // test description
+		databaseSessions []Session      // sessions that the database starts off with
+		rawQuery         string         // request GET query parameters
+		cookies          []*http.Cookie // request cookies
+		wantItemprops    url.Values     // itemprops extracted from parsing html response
+	}
 }
 
+// {postID} | {noteID} automatically generated  (both Content-Type, Accept headers, multisitemode subdirectory) (both file_path and parent_folder_path + file_name)
 // extract into separate function that tests *all* paths for a specific error condition:
 // - invalid JSON/url encoded values
 // - invalid HTTP methods
