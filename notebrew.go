@@ -1140,7 +1140,7 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.OldName))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				response.OldNameErrors = append(response.OldNameErrors, "source file/folder does not exist")
+				response.OldNameErrors = append(response.OldNameErrors, "old file/folder does not exist")
 				writeResponse(w, r, response)
 				return
 			}
@@ -1156,7 +1156,7 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 		if err == nil {
-			response.NewNameErrors = append(response.NewNameErrors, "destination file/folder already exists")
+			response.NewNameErrors = append(response.NewNameErrors, "new file/folder already exists")
 			writeResponse(w, r, response)
 			return
 		}

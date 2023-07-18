@@ -467,7 +467,7 @@ func Test_POST_createFile(t *testing.T) {
 			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
 				t.Fatal(testutil.Callers(), diff)
 			}
-			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
+			if gotResponse.Error == "" && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
 				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFileExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -546,7 +546,7 @@ func Test_POST_createFile(t *testing.T) {
 					t.Fatal(testutil.Callers(), diff)
 				}
 			}
-			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
+			if gotResponse.Error == "" && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
 				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFileExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -994,7 +994,7 @@ func Test_POST_createFolder(t *testing.T) {
 					t.Fatal(testutil.Callers(), diff)
 				}
 			}
-			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
+			if gotResponse.Error == "" && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.NameErrors) == 0 {
 				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -1159,10 +1159,10 @@ func Test_GET_rename(t *testing.T) {
 }
 
 func Test_POST_rename(t *testing.T) {
-	t.Skip()
 	type Request struct {
 		ParentFolder string `json:"parent_folder,omitempty"`
-		OldName      string `json:"name,omitempty"`
+		OldName      string `json:"old_name,omitempty"`
+		NewName      string `json:"new_name,omitempty"`
 	}
 	type Response struct {
 		ParentFolder       string   `json:"parent_folder,omitempty"`
@@ -1174,15 +1174,15 @@ func Test_POST_rename(t *testing.T) {
 		Error              string   `json:"error,omitempty"`
 	}
 	type TestTable struct {
-		description           string   // test description
-		testFS                *TestFS  // Notebrew.FS
-		multisiteMode         string   // Notebrew.MultisiteMode
-		sitePrefix            string   // sitePrefix argument
-		request               Request  // request payload
-		wantResponse          Response // response payload
-		wantLocation          string   // HTTP response Location header
-		assertFolderExists    string   // folder that should be asserted for existence if response has no errors
-		assertFolderNotExists string   // folder that should be asserted for non-existence if response has no errors
+		description     string   // test description
+		testFS          *TestFS  // Notebrew.FS
+		multisiteMode   string   // Notebrew.MultisiteMode
+		sitePrefix      string   // sitePrefix argument
+		request         Request  // request payload
+		wantResponse    Response // response payload
+		wantLocation    string   // HTTP response Location header
+		assertExists    string   // file/folder that should be asserted for existence if response has no errors
+		assertNotExists string   // file/folder that should be asserted for non-existence if response has no errors
 	}
 
 	tests := []TestTable{{
@@ -1191,83 +1191,117 @@ func Test_POST_rename(t *testing.T) {
 		request: Request{
 			ParentFolder: "",
 			OldName:      "",
+			NewName:      "",
 		},
 		wantResponse: Response{
 			ParentFolder: "",
 			ParentFolderErrors: []string{
-				"parent folder has to start with posts, notes, pages, templates or assets",
+				"cannot be empty",
 			},
 			OldName: "",
 			OldNameErrors: []string{
 				"cannot be empty",
 			},
-		},
-	}, {
-		description: "posts errors",
-		testFS:      &TestFS{fstest.MapFS{}},
-		request: Request{
-			ParentFolder: "/posts/foo/bar/",
-			OldName:      "bAz#$%&",
-		},
-		wantResponse: Response{
-			ParentFolder: "posts/foo/bar",
-			ParentFolderErrors: []string{
-				"not allowed to use this parent folder",
-			},
-			OldName: "bAz#$%&",
-			OldNameErrors: []string{
-				"no uppercase letters [A-Z] allowed",
-				"forbidden characters: #$%&",
+			NewName: "",
+			NewNameErrors: []string{
+				"cannot be empty",
 			},
 		},
 	}, {
-		description: "parent folder doesnt exist",
+		description: "parent folder does not exist",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
-			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
+			ParentFolder: "/assets/foo/bar/",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
 			ParentFolderErrors: []string{
 				"parent folder does not exist",
 			},
-			OldName: "baz",
+			OldName: "baz.js",
+			NewName: "qux.js",
 		},
 	}, {
-		description: "folder already exists",
+		description: "parent folder is not a folder",
 		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
+			"assets/foo/bar": &fstest.MapFile{},
 		}},
 		request: Request{
-			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
+			ParentFolder: "/assets/foo/bar/",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
-			// AlreadyExists: "/admin/assets/foo/bar/baz",
+			ParentFolderErrors: []string{
+				"not a folder",
+			},
+			OldName: "baz.js",
+			NewName: "qux.js",
 		},
-		assertFolderExists: "assets/foo/bar/baz",
 	}, {
-		description: "file with same name already exists",
+		description: "old file doesnt exist",
 		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar/baz": &fstest.MapFile{},
+			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
 			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
+			OldName:      "baz.js",
 			OldNameErrors: []string{
-				"file with the same name already exists",
+				"old file/folder does not exist",
+			},
+			NewName: "qux.js",
+		},
+	}, {
+		description: "new file already exists",
+		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
+			"assets/foo/bar/baz.js": &fstest.MapFile{},
+			"assets/foo/bar/qux.js": &fstest.MapFile{},
+		}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
+			NewNameErrors: []string{
+				"new file/folder already exists",
 			},
 		},
 	}, {
-		description: "folder already exists (with sitePrefix)",
+		description: "file renamed successfully",
 		testFS: &TestFS{fstest.MapFS{
+			"assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
+			"assets/foo/bar/baz.js": &fstest.MapFile{},
+		}},
+		request: Request{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
+		},
+		wantResponse: Response{
+			ParentFolder: "assets/foo/bar",
+			OldName:      "baz.js",
+			NewName:      "qux.js",
+		},
+		wantLocation:    "/admin/assets/foo/bar/",
+		assertExists:    "assets/foo/bar/qux.js",
+		assertNotExists: "assets/foo/bar/baz.js",
+	}, {
+		description: "folder renamed successfully (with sitePrefix)",
+		testFS: &TestFS{fstest.MapFS{
+			"~bokwoon/assets/foo/bar":     &fstest.MapFile{Mode: fs.ModeDir},
 			"~bokwoon/assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		multisiteMode: "subdirectory",
@@ -1275,45 +1309,16 @@ func Test_POST_rename(t *testing.T) {
 		request: Request{
 			ParentFolder: "assets/foo/bar",
 			OldName:      "baz",
+			NewName:      "qux",
 		},
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
 			OldName:      "baz",
-			// AlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz",
+			NewName:      "qux",
 		},
-		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
-	}, {
-		description: "folder created successfully",
-		testFS: &TestFS{fstest.MapFS{
-			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		request: Request{
-			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
-		},
-		wantResponse: Response{
-			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
-		},
-		wantLocation:       "/admin/assets/foo/bar/baz/",
-		assertFolderExists: "assets/foo/bar/baz",
-	}, {
-		description: "folder created successfully (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
-			"~bokwoon/assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
-		}},
-		multisiteMode: "subdirectory",
-		sitePrefix:    "~bokwoon",
-		request: Request{
-			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
-		},
-		wantResponse: Response{
-			ParentFolder: "assets/foo/bar",
-			OldName:      "baz",
-		},
-		wantLocation:       "/~bokwoon/admin/assets/foo/bar/baz/",
-		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
+		wantLocation:    "/~bokwoon/admin/assets/foo/bar/", // TODO: rename to /admin/~bokwoon/assets/foo/bar/ for this and other tests
+		assertExists:    "~bokwoon/assets/foo/bar/qux",
+		assertNotExists: "~bokwoon/assets/foo/bar/baz",
 	}}
 
 	for _, tt := range tests {
@@ -1343,7 +1348,7 @@ func Test_POST_rename(t *testing.T) {
 				"Accept":       []string{"application/json"},
 			}
 			w := httptest.NewRecorder()
-			nbrew.createFolder(w, r, tt.sitePrefix)
+			nbrew.rename(w, r, tt.sitePrefix)
 			result := w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusOK); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -1356,17 +1361,18 @@ func Test_POST_rename(t *testing.T) {
 			if diff := testutil.Diff(gotResponse, tt.wantResponse); diff != "" {
 				t.Fatal(testutil.Callers(), diff)
 			}
-			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.OldNameErrors) == 0 {
-				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
+			if gotResponse.Error == "" && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.OldNameErrors) == 0 && len(gotResponse.NewNameErrors) == 0 {
+				_, err := fs.Stat(nbrew.FS, tt.assertExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFolderExists)
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
 				}
-				if !fileInfo.IsDir() {
-					t.Fatal(testutil.Callers(), "file was created but is not a directory")
+				_, err = fs.Stat(nbrew.FS, tt.assertNotExists)
+				if err == nil {
+					t.Fatalf(testutil.Callers()+": %q: file was not deleted", tt.assertNotExists)
 				}
 			}
 			// === HTML form === //
@@ -1381,7 +1387,8 @@ func Test_POST_rename(t *testing.T) {
 			}
 			values := url.Values{
 				"parent_folder": []string{tt.request.ParentFolder},
-				"name":          []string{tt.request.OldName},
+				"old_name":      []string{tt.request.OldName},
+				"new_name":      []string{tt.request.NewName},
 			}
 			r, err = http.NewRequest("POST", "", strings.NewReader(values.Encode()))
 			if err != nil {
@@ -1391,7 +1398,7 @@ func Test_POST_rename(t *testing.T) {
 				"Content-Type": []string{"application/x-www-form-urlencoded"},
 			}
 			w = httptest.NewRecorder()
-			nbrew.createFolder(w, r, tt.sitePrefix)
+			nbrew.rename(w, r, tt.sitePrefix)
 			result = w.Result()
 			if diff := testutil.Diff(result.StatusCode, http.StatusFound); diff != "" {
 				t.Fatal(testutil.Callers(), diff, w.Body.String())
@@ -1435,17 +1442,18 @@ func Test_POST_rename(t *testing.T) {
 					t.Fatal(testutil.Callers(), diff)
 				}
 			}
-			if len(gotResponse.Error) == 0 && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.OldNameErrors) == 0 {
-				fileInfo, err := fs.Stat(nbrew.FS, tt.assertFolderExists)
+			if gotResponse.Error == "" && len(gotResponse.ParentFolderErrors) == 0 && len(gotResponse.OldNameErrors) == 0 && len(gotResponse.NewNameErrors) == 0 {
+				_, err := fs.Stat(nbrew.FS, tt.assertExists)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertFolderExists)
+						t.Fatalf(testutil.Callers()+": %q: file was not created", tt.assertExists)
 					} else {
 						t.Fatal(testutil.Callers(), err)
 					}
 				}
-				if !fileInfo.IsDir() {
-					t.Fatal(testutil.Callers(), "file was created but is not a directory")
+				_, err = fs.Stat(nbrew.FS, tt.assertNotExists)
+				if err == nil {
+					t.Fatalf(testutil.Callers()+": %q: file was not deleted", tt.assertNotExists)
 				}
 			}
 		})
