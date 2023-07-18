@@ -15,9 +15,14 @@
     {{- if .Error }}
     <div itemprop="error">{{ .Error }}</div>
     {{- end }}
-    <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
     <div>
-        <div>Parent folder: {{ .ParentFolder }}</div>
+        {{- if .ParentFolder }}
+        <label class="db">Parent folder: {{ .ParentFolder }}</label>
+        <input type="hidden" name="parent_folder" value="{{ .ParentFolder }}" itemprop="parent_folder">
+        {{- else }}
+        <label for="parent_folder" class="db">Parent folder</label>
+        <input id="parent_folder" name="parent_folder" itemprop="parent_folder">
+        {{- end }}
         {{- if .ParentFolderErrors }}
         <ul>
             {{- range $error := .ParentFolderErrors }}
