@@ -7,6 +7,17 @@ notes:
     - Must start with posts, pages, templates, notes or assets.
     - Posts and pages must adhere to the /posts/{postID}/ or /posts/{category}/{postID}/ format.
 
+/admin/~bokwoon/create_file/
+/admin/~bokwoon/create_folder/
+/admin/~bokwoon/rename/
+/admin/~bokwoon/move/
+/admin/~bokwoon/delete/
+/admin/~bokwoon/posts/...
+/admin/~bokwoon/notes/...
+/admin/~bokwoon/pages/...
+/admin/~bokwoon/templates/...
+/admin/~bokwoon/assets/...
+
 /admin/create_file/
 - parent_folder
 - name

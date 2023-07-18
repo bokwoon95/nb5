@@ -726,11 +726,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			return
 		}
 		if err == nil {
-			if nbrew.MultisiteMode == "subdirectory" {
-				response.AlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
-			} else {
-				response.AlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
-			}
+			response.AlreadyExists = "/" + path.Join("admin", sitePrefix, response.ParentFolder, response.Name)
 			writeResponse(w, r, response)
 			return
 		}
@@ -925,11 +921,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		}
 		if err == nil {
 			if fileInfo.IsDir() {
-				if nbrew.MultisiteMode == "subdirectory" {
-					response.AlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
-				} else {
-					response.AlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
-				}
+				response.AlreadyExists = "/" + path.Join("admin", sitePrefix, response.ParentFolder, response.Name)
 			} else {
 				response.NameErrors = append(response.NameErrors, "file with the same name already exists")
 			}
@@ -1031,7 +1023,7 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) == 0 && len(response.OldNameErrors) == 0 && len(response.NewNameErrors) == 0 && response.Error != "" {
+			if len(response.ParentFolderErrors) == 0 && len(response.OldNameErrors) == 0 && len(response.NewNameErrors) == 0 && response.Error == "" {
 				http.Redirect(w, r, "/"+path.Join("admin", sitePrefix, response.ParentFolder)+"/", http.StatusFound)
 				return
 			}

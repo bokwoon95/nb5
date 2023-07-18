@@ -390,7 +390,7 @@ func Test_POST_createFile(t *testing.T) {
 		wantResponse: Response{
 			ParentFolder:  "assets/foo/bar",
 			Name:          "baz.js",
-			AlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
+			AlreadyExists: "/admin/~bokwoon/assets/foo/bar/baz.js",
 		},
 		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
 	}, {
@@ -423,7 +423,7 @@ func Test_POST_createFile(t *testing.T) {
 			ParentFolder: "assets/foo/bar",
 			Name:         "baz.js",
 		},
-		wantLocation:     "/~bokwoon/admin/assets/foo/bar/baz.js",
+		wantLocation:     "/admin/~bokwoon/assets/foo/bar/baz.js",
 		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
 	}}
 
@@ -838,7 +838,7 @@ func Test_POST_createFolder(t *testing.T) {
 		wantResponse: Response{
 			ParentFolder:  "assets/foo/bar",
 			Name:          "baz",
-			AlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz",
+			AlreadyExists: "/admin/~bokwoon/assets/foo/bar/baz",
 		},
 		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
 	}, {
@@ -871,7 +871,7 @@ func Test_POST_createFolder(t *testing.T) {
 			ParentFolder: "assets/foo/bar",
 			Name:         "baz",
 		},
-		wantLocation:       "/~bokwoon/admin/assets/foo/bar/baz/",
+		wantLocation:       "/admin/~bokwoon/assets/foo/bar/baz/",
 		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
 	}}
 
@@ -1316,7 +1316,7 @@ func Test_POST_rename(t *testing.T) {
 			OldName:      "baz",
 			NewName:      "qux",
 		},
-		wantLocation:    "/~bokwoon/admin/assets/foo/bar/",
+		wantLocation:    "/admin/~bokwoon/assets/foo/bar/",
 		assertExists:    "~bokwoon/assets/foo/bar/qux",
 		assertNotExists: "~bokwoon/assets/foo/bar/baz",
 	}}
