@@ -6,10 +6,10 @@
 <link rel="stylesheet" href="/admin/static/styles.css">
 <title>Create folder</title>
 <form method="post">
-    {{- if .FolderAlreadyExists }}
+    {{- if .AlreadyExists }}
     <div>
         Folder already exists, click the link ➡
-        <a href="{{ .FolderAlreadyExists }}" itemprop="folder_already_exists">{{ .FolderAlreadyExists }}</a>
+        <a href="{{ .AlreadyExists }}" itemprop="already_exists">{{ .AlreadyExists }}</a>
     </div>
     {{- end }}
     {{- if .Error }}

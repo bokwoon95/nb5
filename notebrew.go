@@ -543,7 +543,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		Name               string   `json:"name,omitempty"`
 		NameErrors         []string `json:"name_errors,omitempty"`
 		Error              string   `json:"error,omitempty"`
-		FileAlreadyExists  string   `json:"file_already_exists,omitempty"`
+		AlreadyExists      string   `json:"already_exists,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -606,7 +606,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.FileAlreadyExists != "" {
+			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.AlreadyExists != "" {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -733,9 +733,9 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 		}
 		if err == nil {
 			if nbrew.MultisiteMode == "subdirectory" {
-				response.FileAlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
+				response.AlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
 			} else {
-				response.FileAlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
+				response.AlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
 			}
 			writeResponse(w, r, response)
 			return
@@ -770,12 +770,12 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		ParentFolder        string   `json:"parent_folder,omitempty"`
-		ParentFolderErrors  []string `json:"parent_folder_errors,omitempty"`
-		Name                string   `json:"name,omitempty"`
-		NameErrors          []string `json:"name_errors,omitempty"`
-		Error               string   `json:"error,omitempty"`
-		FolderAlreadyExists string   `json:"folder_already_exists,omitempty"`
+		ParentFolder       string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
+		Name               string   `json:"name,omitempty"`
+		NameErrors         []string `json:"name_errors,omitempty"`
+		Error              string   `json:"error,omitempty"`
+		AlreadyExists      string   `json:"already_exists,omitempty"`
 	}
 
 	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
@@ -838,7 +838,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.FolderAlreadyExists != "" {
+			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.AlreadyExists != "" {
 				err := nbrew.setSession(w, r, &response, &http.Cookie{
 					Path:     r.URL.Path,
 					Name:     "flash_session",
@@ -938,9 +938,9 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 		if err == nil {
 			if fileInfo.IsDir() {
 				if nbrew.MultisiteMode == "subdirectory" {
-					response.FolderAlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
+					response.AlreadyExists = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
 				} else {
-					response.FolderAlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
+					response.AlreadyExists = "/" + path.Join("admin", response.ParentFolder, response.Name)
 				}
 			} else {
 				response.NameErrors = append(response.NameErrors, "file with the same name already exists")
@@ -957,6 +957,217 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 				return
 			}
 			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		writeResponse(w, r, response)
+	default:
+		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix string) {
+	type Request struct {
+		ParentFolder    string `json:"parent_folder,omitempty"`
+		SourceName      string `json:"source_name,omitempty"`
+		DestinationName string `json:"destination_name,omitempty"`
+	}
+	type Response struct {
+		ParentFolder          string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors    []string `json:"parent_folder_errors,omitempty"`
+		SourceName            string   `json:"source_name,omitempty"`
+		SourceNameErrors      []string `json:"source_name_errors,omitempty"`
+		DestinationName       string   `json:"destination_name,omitempty"`
+		DestinationNameErrors []string `json:"destination_name_errors,omitempty"`
+		Error                 string   `json:"error,omitempty"`
+	}
+
+	logger, ok := r.Context().Value(loggerKey).(*slog.Logger)
+	if !ok {
+		logger = slog.Default()
+	}
+	logger = logger.With(
+		slog.String("method", r.Method),
+		slog.String("url", r.URL.String()),
+		slog.String("sitePrefix", sitePrefix),
+	)
+	r = r.WithContext(context.WithValue(r.Context(), loggerKey, logger))
+
+	switch r.Method {
+	case "GET":
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+			return
+		}
+		var response Response
+		ok, err := nbrew.getSession(r, "flash_session", &response)
+		if err != nil {
+			logger.Error(err.Error())
+		}
+		if !ok {
+			response.ParentFolder = r.Form.Get("parent_folder")
+			response.SourceName = r.Form.Get("source_name")
+			response.DestinationName = r.Form.Get("destination_name")
+		}
+		if response.ParentFolder != "" {
+			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
+		}
+		nbrew.clearSession(w, r, "flash_session")
+		tmpl, err := template.ParseFS(rootFS, "html/rename.html")
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		buf := bufPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufPool.Put(buf)
+		err = tmpl.Execute(buf, &response)
+		if err != nil {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		buf.WriteTo(w)
+	case "POST":
+		writeResponse := func(w http.ResponseWriter, r *http.Request, response Response) {
+			accept, _, _ := mime.ParseMediaType(r.Header.Get("Accept"))
+			if accept == "application/json" {
+				b, err := json.Marshal(&response)
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				w.Write(b)
+				return
+			}
+			if len(response.ParentFolderErrors) > 0 || len(response.SourceNameErrors) > 0 || len(response.DestinationNameErrors) > 0 || response.Error != "" {
+				err := nbrew.setSession(w, r, &response, &http.Cookie{
+					Path:     r.URL.Path,
+					Name:     "flash_session",
+					Secure:   nbrew.Scheme == "https://",
+					HttpOnly: true,
+					SameSite: http.SameSiteLaxMode,
+				})
+				if err != nil {
+					logger.Error(err.Error())
+					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+				return
+			}
+			var redirectURL string
+			if nbrew.MultisiteMode == "subdirectory" {
+				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder) + "/"
+			} else {
+				redirectURL = "/" + path.Join("admin", response.ParentFolder) + "/"
+			}
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+		}
+
+		var request Request
+		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		switch contentType {
+		case "application/json":
+			err := json.NewDecoder(r.Body).Decode(&request)
+			if err != nil {
+				var syntaxErr *json.SyntaxError
+				if errors.As(err, &syntaxErr) {
+					http.Error(w, "400 Bad Request: invalid JSON", http.StatusBadRequest)
+					return
+				}
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		case "application/x-www-form-urlencoded":
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+				return
+			}
+			request.ParentFolder = r.Form.Get("parent_folder")
+			request.SourceName = r.Form.Get("old_name")
+			request.DestinationName = r.Form.Get("new_name")
+		default:
+			http.Error(w, "415 Unsupported Media Type", http.StatusUnsupportedMediaType)
+			return
+		}
+
+		response := Response{
+			ParentFolder:    request.ParentFolder,
+			SourceName:      request.SourceName,
+			DestinationName: request.DestinationName,
+		}
+		if response.ParentFolder == "" {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "cannot be empty")
+		} else {
+			response.ParentFolder = strings.Trim(path.Clean(response.ParentFolder), "/")
+		}
+		if response.SourceName == "" {
+			response.SourceNameErrors = append(response.SourceNameErrors, "cannot be empty")
+		}
+		if response.DestinationName == "" {
+			response.DestinationNameErrors = append(response.DestinationNameErrors, "cannot be empty")
+		} else {
+			response.DestinationNameErrors = validateName(response.DestinationNameErrors, response.DestinationName)
+		}
+		if len(response.ParentFolderErrors) > 0 || len(response.SourceNameErrors) > 0 || len(response.DestinationNameErrors) > 0 {
+			writeResponse(w, r, response)
+			return
+		}
+
+		parentFileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
+				writeResponse(w, r, response)
+				return
+			}
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if !parentFileInfo.IsDir() {
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "not a folder")
+			writeResponse(w, r, response)
+			return
+		}
+
+		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.SourceName))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				response.SourceNameErrors = append(response.SourceNameErrors, "source file/folder does not exist")
+				writeResponse(w, r, response)
+				return
+			}
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		_, err = fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.DestinationName))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err == nil {
+			response.DestinationNameErrors = append(response.DestinationNameErrors, "destination file/folder already exists")
+			writeResponse(w, r, response)
+			return
+		}
+
+		err = Move(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.SourceName), path.Join(sitePrefix, response.ParentFolder, response.DestinationName))
+		if err != nil {
+			if errors.Is(err, ErrUnsupported) {
+				response.Error = "unable to rename file/folder"
+				writeResponse(w, r, response)
+				return
+			}
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}

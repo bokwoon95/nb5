@@ -162,9 +162,9 @@ func Test_GET_createFile(t *testing.T) {
 		databaseSessions: []Session{{
 			sessionTokenHash: sessionTokenHash,
 			data: jsonify(map[string]any{
-				"parent_folder":       "assets/foo/bar",
-				"name":                "baz.js",
-				"file_already_exists": "/admin/assets/foo/bar/baz.js",
+				"parent_folder":  "assets/foo/bar",
+				"name":           "baz.js",
+				"already_exists": "/admin/assets/foo/bar/baz.js",
 			}),
 		}},
 		cookies: []*http.Cookie{{
@@ -172,9 +172,9 @@ func Test_GET_createFile(t *testing.T) {
 			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
 		}},
 		wantItemprops: url.Values{
-			"parent_folder":       []string{"assets/foo/bar"},
-			"name":                []string{"baz.js"},
-			"file_already_exists": []string{"/admin/assets/foo/bar/baz.js"},
+			"parent_folder":  []string{"assets/foo/bar"},
+			"name":           []string{"baz.js"},
+			"already_exists": []string{"/admin/assets/foo/bar/baz.js"},
 		},
 	}, {
 		description: "error",
@@ -280,7 +280,7 @@ func Test_POST_createFile(t *testing.T) {
 		Name               string   `json:"name,omitempty"`
 		NameErrors         []string `json:"name_errors,omitempty"`
 		Error              []string `json:"error,omitempty"`
-		FileAlreadyExists  string   `json:"file_already_exists,omitempty"`
+		AlreadyExists      string   `json:"already_exists,omitempty"`
 	}
 	type TestTable struct {
 		description      string   // test description
@@ -387,9 +387,9 @@ func Test_POST_createFile(t *testing.T) {
 			Name:         "baz.js",
 		},
 		wantResponse: Response{
-			ParentFolder:      "assets/foo/bar",
-			Name:              "baz.js",
-			FileAlreadyExists: "/admin/assets/foo/bar/baz.js",
+			ParentFolder:  "assets/foo/bar",
+			Name:          "baz.js",
+			AlreadyExists: "/admin/assets/foo/bar/baz.js",
 		},
 		assertFileExists: "assets/foo/bar/baz.js",
 	}, {
@@ -405,9 +405,9 @@ func Test_POST_createFile(t *testing.T) {
 			Name:         "baz.js",
 		},
 		wantResponse: Response{
-			ParentFolder:      "assets/foo/bar",
-			Name:              "baz.js",
-			FileAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
+			ParentFolder:  "assets/foo/bar",
+			Name:          "baz.js",
+			AlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz.js",
 		},
 		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
 	}, {
@@ -647,9 +647,9 @@ func Test_GET_createFolder(t *testing.T) {
 		databaseSessions: []Session{{
 			sessionTokenHash: sessionTokenHash,
 			data: jsonify(map[string]any{
-				"parent_folder":         "assets/foo/bar",
-				"name":                  "baz",
-				"folder_already_exists": "/admin/assets/foo/bar/baz",
+				"parent_folder":  "assets/foo/bar",
+				"name":           "baz",
+				"already_exists": "/admin/assets/foo/bar/baz",
 			}),
 		}},
 		cookies: []*http.Cookie{{
@@ -657,9 +657,9 @@ func Test_GET_createFolder(t *testing.T) {
 			Value: strings.TrimLeft(hex.EncodeToString(sessionToken), "0"),
 		}},
 		wantItemprops: url.Values{
-			"parent_folder":         []string{"assets/foo/bar"},
-			"name":                  []string{"baz"},
-			"folder_already_exists": []string{"/admin/assets/foo/bar/baz"},
+			"parent_folder":  []string{"assets/foo/bar"},
+			"name":           []string{"baz"},
+			"already_exists": []string{"/admin/assets/foo/bar/baz"},
 		},
 	}, {
 		description: "error",
@@ -760,12 +760,12 @@ func Test_POST_createFolder(t *testing.T) {
 		Name         string `json:"name,omitempty"`
 	}
 	type Response struct {
-		ParentFolder        string   `json:"parent_folder,omitempty"`
-		ParentFolderErrors  []string `json:"parent_folder_errors,omitempty"`
-		Name                string   `json:"name,omitempty"`
-		NameErrors          []string `json:"name_errors,omitempty"`
-		Error               []string `json:"error,omitempty"`
-		FolderAlreadyExists string   `json:"folder_already_exists,omitempty"`
+		ParentFolder       string   `json:"parent_folder,omitempty"`
+		ParentFolderErrors []string `json:"parent_folder_errors,omitempty"`
+		Name               string   `json:"name,omitempty"`
+		NameErrors         []string `json:"name_errors,omitempty"`
+		Error              []string `json:"error,omitempty"`
+		AlreadyExists      string   `json:"already_exists,omitempty"`
 	}
 	type TestTable struct {
 		description        string   // test description
@@ -837,9 +837,9 @@ func Test_POST_createFolder(t *testing.T) {
 			Name:         "baz",
 		},
 		wantResponse: Response{
-			ParentFolder:        "assets/foo/bar",
-			Name:                "baz",
-			FolderAlreadyExists: "/admin/assets/foo/bar/baz",
+			ParentFolder:  "assets/foo/bar",
+			Name:          "baz",
+			AlreadyExists: "/admin/assets/foo/bar/baz",
 		},
 		assertFolderExists: "assets/foo/bar/baz",
 	}, {
@@ -870,9 +870,9 @@ func Test_POST_createFolder(t *testing.T) {
 			Name:         "baz",
 		},
 		wantResponse: Response{
-			ParentFolder:        "assets/foo/bar",
-			Name:                "baz",
-			FolderAlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz",
+			ParentFolder:  "assets/foo/bar",
+			Name:          "baz",
+			AlreadyExists: "/~bokwoon/admin/assets/foo/bar/baz",
 		},
 		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
 	}, {

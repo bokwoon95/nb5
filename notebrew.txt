@@ -15,11 +15,11 @@ notes:
 - name
 /admin/rename/
 - parent_folder
-- old_name
-- new_name
+- source_name
+- destination_name
 /admin/move/
 - path
-- dest_folder
+- destination_folder
 /admin/delete/
 - path
 
