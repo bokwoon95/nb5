@@ -1316,7 +1316,7 @@ func Test_POST_rename(t *testing.T) {
 			OldName:      "baz",
 			NewName:      "qux",
 		},
-		wantLocation:    "/~bokwoon/admin/assets/foo/bar/", // TODO: rename to /admin/~bokwoon/assets/foo/bar/ for this and other tests
+		wantLocation:    "/~bokwoon/admin/assets/foo/bar/",
 		assertExists:    "~bokwoon/assets/foo/bar/qux",
 		assertNotExists: "~bokwoon/assets/foo/bar/baz",
 	}}

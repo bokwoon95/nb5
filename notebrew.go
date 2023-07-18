@@ -606,29 +606,23 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.AlreadyExists != "" {
-				err := nbrew.setSession(w, r, &response, &http.Cookie{
-					Path:     r.URL.Path,
-					Name:     "flash_session",
-					Secure:   nbrew.Scheme == "https://",
-					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
-				})
-				if err != nil {
-					logger.Error(err.Error())
-					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-					return
-				}
-				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			if len(response.ParentFolderErrors) == 0 && len(response.NameErrors) == 0 && response.Error == "" && response.AlreadyExists == "" {
+				http.Redirect(w, r, "/"+path.Join("admin", sitePrefix, response.ParentFolder, response.Name), http.StatusFound)
 				return
 			}
-			var redirectURL string
-			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name)
-			} else {
-				redirectURL = "/" + path.Join("admin", response.ParentFolder, response.Name)
+			err := nbrew.setSession(w, r, &response, &http.Cookie{
+				Path:     r.URL.Path,
+				Name:     "flash_session",
+				Secure:   nbrew.Scheme == "https://",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
+			if err != nil {
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
 			}
-			http.Redirect(w, r, redirectURL, http.StatusFound)
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
 
 		var request Request
@@ -838,29 +832,23 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) > 0 || len(response.NameErrors) > 0 || response.Error != "" || response.AlreadyExists != "" {
-				err := nbrew.setSession(w, r, &response, &http.Cookie{
-					Path:     r.URL.Path,
-					Name:     "flash_session",
-					Secure:   nbrew.Scheme == "https://",
-					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
-				})
-				if err != nil {
-					logger.Error(err.Error())
-					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-					return
-				}
-				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			if len(response.ParentFolderErrors) == 0 && len(response.NameErrors) == 0 && response.Error == "" && response.AlreadyExists == "" {
+				http.Redirect(w, r, "/"+path.Join("admin", sitePrefix, response.ParentFolder, response.Name)+"/", http.StatusFound)
 				return
 			}
-			var redirectURL string
-			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder, response.Name) + "/"
-			} else {
-				redirectURL = "/" + path.Join("admin", response.ParentFolder, response.Name) + "/"
+			err := nbrew.setSession(w, r, &response, &http.Cookie{
+				Path:     r.URL.Path,
+				Name:     "flash_session",
+				Secure:   nbrew.Scheme == "https://",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
+			if err != nil {
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
 			}
-			http.Redirect(w, r, redirectURL, http.StatusFound)
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
 
 		var request Request
@@ -1043,29 +1031,23 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 				w.Write(b)
 				return
 			}
-			if len(response.ParentFolderErrors) > 0 || len(response.OldNameErrors) > 0 || len(response.NewNameErrors) > 0 || response.Error != "" {
-				err := nbrew.setSession(w, r, &response, &http.Cookie{
-					Path:     r.URL.Path,
-					Name:     "flash_session",
-					Secure:   nbrew.Scheme == "https://",
-					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
-				})
-				if err != nil {
-					logger.Error(err.Error())
-					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-					return
-				}
-				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			if len(response.ParentFolderErrors) == 0 && len(response.OldNameErrors) == 0 && len(response.NewNameErrors) == 0 && response.Error != "" {
+				http.Redirect(w, r, "/"+path.Join("admin", sitePrefix, response.ParentFolder)+"/", http.StatusFound)
 				return
 			}
-			var redirectURL string
-			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", response.ParentFolder) + "/"
-			} else {
-				redirectURL = "/" + path.Join("admin", response.ParentFolder) + "/"
+			err := nbrew.setSession(w, r, &response, &http.Cookie{
+				Path:     r.URL.Path,
+				Name:     "flash_session",
+				Secure:   nbrew.Scheme == "https://",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
+			if err != nil {
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
 			}
-			http.Redirect(w, r, redirectURL, http.StatusFound)
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
 
 		var request Request
@@ -1253,23 +1235,23 @@ func (nbrew *Notebrew) move(w http.ResponseWriter, r *http.Request, sitePrefix s
 				w.Write(b)
 				return
 			}
-			if len(response.PathErrors) > 0 || len(response.DestinationFolderErrors) > 0 || response.Error != "" {
-				err := nbrew.setSession(w, r, &response, &http.Cookie{Name: "flash_session"})
-				if err != nil {
-					logger.Error(err.Error())
-					http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-					return
-				}
-				http.Redirect(w, r, r.URL.String(), http.StatusFound)
+			if len(response.PathErrors) == 0 && len(response.DestinationFolderErrors) == 0 && response.Error == "" {
+				http.Redirect(w, r, "/"+path.Join("admin", sitePrefix, response.DestinationFolder)+"/", http.StatusFound)
 				return
 			}
-			var redirectURL string
-			if nbrew.MultisiteMode == "subdirectory" {
-				redirectURL = "/" + path.Join(sitePrefix, "admin", response.DestinationFolder) + "/"
-			} else {
-				redirectURL = "/" + path.Join("admin", response.DestinationFolder) + "/"
+			err := nbrew.setSession(w, r, &response, &http.Cookie{
+				Path:     r.URL.Path,
+				Name:     "flash_session",
+				Secure:   nbrew.Scheme == "https://",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+			})
+			if err != nil {
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
 			}
-			http.Redirect(w, r, redirectURL, http.StatusFound)
+			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
 		_ = writeResponse
 	default:
