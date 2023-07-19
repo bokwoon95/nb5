@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+var ErrUnsupported = errors.New("unsupported operation")
+
 // memfs.New()
 
 type Filesystem struct {
@@ -34,7 +36,10 @@ func (fsys *Filesystem) OpenWriter(name string, perm fs.FileMode) (io.WriteClose
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
-	testFile := &TestFile{
+	if fsys.mapFS == nil {
+		return nil, ErrUnsupported
+	}
+	testFile := &file{
 		fsys: fsys,
 		name: name,
 		buf:  &bytes.Buffer{},
@@ -45,6 +50,9 @@ func (fsys *Filesystem) OpenWriter(name string, perm fs.FileMode) (io.WriteClose
 func (fsys *Filesystem) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
+	}
+	if fsys.mapFS == nil {
+		return ErrUnsupported
 	}
 	fileInfo, err := fs.Stat(fsys, path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -65,6 +73,9 @@ func (fsys *Filesystem) MkdirAll(path string, perm fs.FileMode) error {
 func (fsys *Filesystem) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrInvalid}
+	}
+	if fsys.mapFS == nil {
+		return ErrUnsupported
 	}
 	fsys.mu.Lock()
 	delete(fsys.mapFS, path)
@@ -96,6 +107,9 @@ func (fsys *Filesystem) Move(oldpath, newpath string) error {
 	}
 	if !fs.ValidPath(newpath) {
 		return &fs.PathError{Op: "move", Path: newpath, Err: fs.ErrInvalid}
+	}
+	if fsys.mapFS == nil {
+		return ErrUnsupported
 	}
 	fsys.mu.Lock()
 	defer fsys.mu.Unlock()
@@ -170,34 +184,37 @@ func (fsys *Filesystem) Clone() *Filesystem {
 	return &Filesystem{mapFS: mapFS}
 }
 
-type TestFile struct {
+type file struct {
 	fsys *Filesystem
 	name string
 	buf  *bytes.Buffer
 }
 
-func (testFile *TestFile) Write(p []byte) (n int, err error) {
-	return testFile.buf.Write(p)
+func (f *file) Write(p []byte) (n int, err error) {
+	return f.buf.Write(p)
 }
 
-func (testFile *TestFile) Close() error {
-	if testFile.buf == nil {
+func (f *file) Close() error {
+	if f.buf == nil {
 		return fmt.Errorf("already closed")
 	}
 	defer func() {
-		testFile.buf = nil
+		f.buf = nil
 	}()
-	fileInfo, err := fs.Stat(testFile.fsys, testFile.name)
+	if f.fsys.mapFS == nil {
+		return ErrUnsupported
+	}
+	fileInfo, err := fs.Stat(f.fsys, f.name)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	if fileInfo != nil && !fileInfo.IsDir() {
-		return fmt.Errorf("directory named %q already exists", testFile.name)
+		return fmt.Errorf("directory named %q already exists", f.name)
 	}
-	testFile.fsys.mu.Lock()
-	defer testFile.fsys.mu.Unlock()
-	testFile.fsys.mapFS[testFile.name] = &fstest.MapFile{
-		Data:    testFile.buf.Bytes(),
+	f.fsys.mu.Lock()
+	defer f.fsys.mu.Unlock()
+	f.fsys.mapFS[f.name] = &fstest.MapFile{
+		Data:    f.buf.Bytes(),
 		ModTime: time.Now(),
 	}
 	return nil
