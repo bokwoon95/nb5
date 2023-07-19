@@ -201,7 +201,7 @@ func Test_GET_createFile(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
-				FS:            TestFS{MapFS: fstest.MapFS{}},
+				FS:            &TestFS{MapFS: fstest.MapFS{}},
 				DB:            newDatabase(t),
 				Dialect:       sq.DialectSQLite,
 				Scheme:        "https://",
@@ -669,7 +669,7 @@ func Test_GET_createFolder(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
-				FS:            TestFS{MapFS: fstest.MapFS{}},
+				FS:            &TestFS{MapFS: fstest.MapFS{}},
 				DB:            newDatabase(t),
 				Dialect:       sq.DialectSQLite,
 				Scheme:        "https://",
@@ -1107,7 +1107,7 @@ func Test_GET_rename(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
-				FS:            TestFS{MapFS: fstest.MapFS{}},
+				FS:            &TestFS{MapFS: fstest.MapFS{}},
 				DB:            newDatabase(t),
 				Dialect:       sq.DialectSQLite,
 				Scheme:        "https://",
@@ -1476,6 +1476,8 @@ type TestFS struct {
 
 func (fsys *TestFS) Clone() *TestFS {
 	mapFS := make(fstest.MapFS)
+	fsys.mu.Lock()
+	defer fsys.mu.Unlock()
 	for name, file := range fsys.MapFS {
 		mapFS[name] = &fstest.MapFile{
 			Data:    file.Data,
@@ -1485,6 +1487,12 @@ func (fsys *TestFS) Clone() *TestFS {
 		}
 	}
 	return &TestFS{MapFS: mapFS}
+}
+
+func (fsys *TestFS) Open(name string) (fs.File, error) {
+	fsys.mu.RLock()
+	defer fsys.mu.RUnlock()
+	return fsys.MapFS.Open(name)
 }
 
 func (fsys *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
