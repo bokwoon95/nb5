@@ -1474,11 +1474,11 @@ type TestFS struct {
 	mu sync.RWMutex
 }
 
-func (fsys *TestFS) Clone() *TestFS {
+func (testFS *TestFS) Clone() *TestFS {
 	mapFS := make(fstest.MapFS)
-	fsys.mu.Lock()
-	defer fsys.mu.Unlock()
-	for name, file := range fsys.MapFS {
+	testFS.mu.Lock()
+	defer testFS.mu.Unlock()
+	for name, file := range testFS.MapFS {
 		mapFS[name] = &fstest.MapFile{
 			Data:    file.Data,
 			Mode:    file.Mode,
@@ -1489,66 +1489,66 @@ func (fsys *TestFS) Clone() *TestFS {
 	return &TestFS{MapFS: mapFS}
 }
 
-func (fsys *TestFS) Open(name string) (fs.File, error) {
-	fsys.mu.RLock()
-	defer fsys.mu.RUnlock()
-	return fsys.MapFS.Open(name)
+func (testFS *TestFS) Open(name string) (fs.File, error) {
+	testFS.mu.RLock()
+	defer testFS.mu.RUnlock()
+	return testFS.MapFS.Open(name)
 }
 
-func (fsys *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
+func (testFS *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
 	testFile := &TestFile{
-		mapFS: fsys.MapFS,
-		name:  name,
-		buf:   &bytes.Buffer{},
+		testFS: testFS,
+		name: name,
+		buf:  &bytes.Buffer{},
 	}
 	return testFile, nil
 }
 
-func (fsys *TestFS) MkdirAll(path string, perm fs.FileMode) error {
+func (testFS *TestFS) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
 	}
-	fsys.mu.Lock()
-	defer fsys.mu.Unlock()
+	testFS.mu.Lock()
+	defer testFS.mu.Unlock()
 	// TODO: check if path already exists and is not a file.
-	fsys.MapFS[path] = &fstest.MapFile{
+	testFS.MapFS[path] = &fstest.MapFile{
 		Mode:    fs.ModeDir,
 		ModTime: time.Now(),
 	}
 	return nil
 }
 
-func (fsys *TestFS) RemoveAll(path string) error {
+func (testFS *TestFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrInvalid}
 	}
-	fsys.mu.Lock()
-	defer fsys.mu.Unlock()
+	testFS.mu.Lock()
+	defer testFS.mu.Unlock()
 	// TODO: stat the path if it is a file or folder, if folder then need to
 	// recursively delete all entries as well.
-	delete(fsys.MapFS, path)
+	delete(testFS.MapFS, path)
 	pathPrefix := path + "/"
-	for name := range fsys.MapFS {
+	for name := range testFS.MapFS {
 		if strings.HasPrefix(name, pathPrefix) {
-			delete(fsys.MapFS, name)
+			delete(testFS.MapFS, name)
 		}
 	}
 	return nil
 }
 
-func (fsys *TestFS) Move(oldpath, newpath string) error {
+func (testFS *TestFS) Move(oldpath, newpath string) error {
 	if !fs.ValidPath(oldpath) {
 		return &fs.PathError{Op: "move", Path: oldpath, Err: fs.ErrInvalid}
 	}
 	if !fs.ValidPath(newpath) {
 		return &fs.PathError{Op: "move", Path: newpath, Err: fs.ErrInvalid}
 	}
-	fsys.mu.Lock()
-	defer fsys.mu.Unlock()
-	oldFileInfo, err := fs.Stat(fsys.MapFS, oldpath)
+	testFS.mu.Lock()
+	defer testFS.mu.Unlock()
+	oldFileInfo, err := fs.Stat(testFS.MapFS, oldpath)
 	if err != nil {
 		// If source file/directory does not exist, no point in moving
 		// anything.
@@ -1556,19 +1556,19 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 	}
 	var data []byte
 	if !oldFileInfo.IsDir() {
-		data, err = fs.ReadFile(fsys.MapFS, oldpath)
+		data, err = fs.ReadFile(testFS.MapFS, oldpath)
 		if err != nil {
 			return err
 		}
 	}
-	newFileInfo, err := fs.Stat(fsys.MapFS, newpath)
+	newFileInfo, err := fs.Stat(testFS.MapFS, newpath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			// If destination does not exist, the file or directory can safely
 			// take its place. Move the data and filemode over.
 			// TODO: if oldFileInfo.IsDir(), we need to move all child files over to the new folder as well :/.
-			delete(fsys.MapFS, oldpath)
-			fsys.MapFS[newpath] = &fstest.MapFile{
+			delete(testFS.MapFS, oldpath)
+			testFS.MapFS[newpath] = &fstest.MapFile{
 				Data:    data,
 				Mode:    oldFileInfo.Mode(),
 				ModTime: time.Now(),
@@ -1585,8 +1585,8 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 	if newFileInfo.IsDir() {
 		// Move file into directory.
 		// TODO: if oldFileInfo.IsDir(), we need to move all child files over to the new folder as well :/.
-		delete(fsys.MapFS, oldpath)
-		fsys.MapFS[path.Join(newpath, oldFileInfo.Name())] = &fstest.MapFile{
+		delete(testFS.MapFS, oldpath)
+		testFS.MapFS[path.Join(newpath, oldFileInfo.Name())] = &fstest.MapFile{
 			Data:    data,
 			Mode:    oldFileInfo.Mode(),
 			ModTime: time.Now(),
@@ -1595,8 +1595,8 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 	}
 	// Otherwise, move the old file over to the newpath, replacing the current
 	// file.
-	delete(fsys.MapFS, oldpath)
-	fsys.MapFS[newpath] = &fstest.MapFile{
+	delete(testFS.MapFS, oldpath)
+	testFS.MapFS[newpath] = &fstest.MapFile{
 		Data:    data,
 		Mode:    oldFileInfo.Mode(),
 		ModTime: time.Now(),
@@ -1605,32 +1605,32 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 }
 
 type TestFile struct {
-	mapFS       fstest.MapFS
+	testFS        *TestFS
 	name        string
 	buf         *bytes.Buffer
 	writeFailed bool
 }
 
-func (f *TestFile) Write(p []byte) (n int, err error) {
-	n, err = f.buf.Write(p)
+func (testFile *TestFile) Write(p []byte) (n int, err error) {
+	n, err = testFile.buf.Write(p)
 	if err != nil {
-		f.writeFailed = true
+		testFile.writeFailed = true
 	}
 	return n, err
 }
 
-func (f *TestFile) Close() error {
-	if f.buf == nil {
+func (testFile *TestFile) Close() error {
+	if testFile.buf == nil {
 		return fmt.Errorf("already closed")
 	}
 	defer func() {
-		f.buf = nil
+		testFile.buf = nil
 	}()
-	if f.writeFailed {
+	if testFile.writeFailed {
 		return nil
 	}
-	f.mapFS[f.name] = &fstest.MapFile{
-		Data:    f.buf.Bytes(),
+	testFile.testFS.MapFS[testFile.name] = &fstest.MapFile{
+		Data:    testFile.buf.Bytes(),
 		ModTime: time.Now(),
 	}
 	return nil
