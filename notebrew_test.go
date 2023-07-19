@@ -1605,18 +1605,13 @@ func (testFS *TestFS) Move(oldpath, newpath string) error {
 }
 
 type TestFile struct {
-	testFS      *TestFS
-	name        string
-	buf         *bytes.Buffer
-	writeFailed bool // TODO: don't need writeFailed, writing to a *bytes.Buffer will never return an error.
+	testFS *TestFS
+	name   string
+	buf    *bytes.Buffer
 }
 
 func (testFile *TestFile) Write(p []byte) (n int, err error) {
-	n, err = testFile.buf.Write(p)
-	if err != nil {
-		testFile.writeFailed = true
-	}
-	return n, err
+	return testFile.buf.Write(p)
 }
 
 func (testFile *TestFile) Close() error {
@@ -1626,9 +1621,6 @@ func (testFile *TestFile) Close() error {
 	defer func() {
 		testFile.buf = nil
 	}()
-	if testFile.writeFailed {
-		return nil
-	}
 	testFile.testFS.mu.Lock()
 	defer testFile.testFS.mu.Unlock()
 	fileInfo, err := fs.Stat(testFile.testFS, testFile.name)
