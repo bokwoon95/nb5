@@ -1501,8 +1501,8 @@ func (testFS *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser,
 	}
 	testFile := &TestFile{
 		testFS: testFS,
-		name: name,
-		buf:  &bytes.Buffer{},
+		name:   name,
+		buf:    &bytes.Buffer{},
 	}
 	return testFile, nil
 }
@@ -1605,10 +1605,10 @@ func (testFS *TestFS) Move(oldpath, newpath string) error {
 }
 
 type TestFile struct {
-	testFS        *TestFS
+	testFS      *TestFS
 	name        string
 	buf         *bytes.Buffer
-	writeFailed bool
+	writeFailed bool // TODO: don't need writeFailed, writing to a *bytes.Buffer will never return an error.
 }
 
 func (testFile *TestFile) Write(p []byte) (n int, err error) {
@@ -1628,6 +1628,15 @@ func (testFile *TestFile) Close() error {
 	}()
 	if testFile.writeFailed {
 		return nil
+	}
+	testFile.testFS.mu.Lock()
+	defer testFile.testFS.mu.Unlock()
+	fileInfo, err := fs.Stat(testFile.testFS, testFile.name)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if fileInfo != nil && fileInfo.IsDir() {
+		return fmt.Errorf("cannot save file as %q to filesystem, a directory with the same name already exists", testFile.name)
 	}
 	testFile.testFS.MapFS[testFile.name] = &fstest.MapFile{
 		Data:    testFile.buf.Bytes(),
