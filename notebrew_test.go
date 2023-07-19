@@ -355,7 +355,7 @@ func Test_POST_createFile(t *testing.T) {
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
 			ParentFolderErrors: []string{
-				"parent folder does not exist",
+				"folder does not exist",
 			},
 			Name: "baz.js",
 		},
@@ -789,7 +789,7 @@ func Test_POST_createFolder(t *testing.T) {
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
 			ParentFolderErrors: []string{
-				"parent folder does not exist",
+				"folder does not exist",
 			},
 			Name: "baz",
 		},
@@ -1208,7 +1208,7 @@ func Test_POST_rename(t *testing.T) {
 			},
 		},
 	}, {
-		description: "parent folder does not exist",
+		description: "folder does not exist",
 		testFS:      &TestFS{fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/assets/foo/bar/",
@@ -1218,7 +1218,7 @@ func Test_POST_rename(t *testing.T) {
 		wantResponse: Response{
 			ParentFolder: "assets/foo/bar",
 			ParentFolderErrors: []string{
-				"parent folder does not exist",
+				"folder does not exist",
 			},
 			OldName: "baz.js",
 			NewName: "qux.js",
@@ -1547,6 +1547,7 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 		if errors.Is(err, fs.ErrNotExist) {
 			// If destination does not exist, the file or directory can safely
 			// take its place. Move the data and filemode over.
+			// TODO: if oldFileInfo.IsDir(), we need to move all child files over to the new folder as well :/.
 			delete(fsys.MapFS, oldpath)
 			fsys.MapFS[newpath] = &fstest.MapFile{
 				Data:    data,
@@ -1564,6 +1565,7 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 	}
 	if newFileInfo.IsDir() {
 		// Move file into directory.
+		// TODO: if oldFileInfo.IsDir(), we need to move all child files over to the new folder as well :/.
 		delete(fsys.MapFS, oldpath)
 		fsys.MapFS[path.Join(newpath, oldFileInfo.Name())] = &fstest.MapFile{
 			Data:    data,

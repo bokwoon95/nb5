@@ -714,7 +714,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "folder does not exist")
 			writeResponse(w, r, response)
 			return
 		}
@@ -908,7 +908,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
+			response.ParentFolderErrors = append(response.ParentFolderErrors, "folder does not exist")
 			writeResponse(w, r, response)
 			return
 		}
@@ -1094,10 +1094,10 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 			return
 		}
 
-		parentFileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder))
+		fileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.ParentFolder))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				response.ParentFolderErrors = append(response.ParentFolderErrors, "parent folder does not exist")
+				response.ParentFolderErrors = append(response.ParentFolderErrors, "folder does not exist")
 				writeResponse(w, r, response)
 				return
 			}
@@ -1105,7 +1105,7 @@ func (nbrew *Notebrew) rename(w http.ResponseWriter, r *http.Request, sitePrefix
 			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		if !parentFileInfo.IsDir() {
+		if !fileInfo.IsDir() {
 			response.ParentFolderErrors = append(response.ParentFolderErrors, "not a folder")
 			writeResponse(w, r, response)
 			return
@@ -1245,7 +1245,70 @@ func (nbrew *Notebrew) move(w http.ResponseWriter, r *http.Request, sitePrefix s
 			}
 			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		}
-		_ = writeResponse
+
+		var request Request
+		contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		switch contentType {
+		case "application/json":
+			err := json.NewDecoder(r.Body).Decode(&request)
+			if err != nil {
+				var syntaxErr *json.SyntaxError
+				if errors.As(err, &syntaxErr) {
+					http.Error(w, "400 Bad Request: invalid JSON", http.StatusBadRequest)
+					return
+				}
+				logger.Error(err.Error())
+				http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		case "application/x-www-form-urlencoded":
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("400 Bad Request: %s", err), http.StatusBadRequest)
+				return
+			}
+			request.Path = r.Form.Get("path")
+			request.DestinationFolder = r.Form.Get("destination_folder")
+		default:
+			http.Error(w, "415 Unsupported Media Type", http.StatusUnsupportedMediaType)
+			return
+		}
+
+		response := Response{
+			Path:              request.Path,
+			DestinationFolder: request.DestinationFolder,
+		}
+		if response.Path == "" {
+			response.PathErrors = append(response.PathErrors, "cannot be empty")
+		} else {
+			response.Path = strings.Trim(path.Clean(response.Path), "/")
+		}
+		if response.DestinationFolder == "" {
+			response.DestinationFolderErrors = append(response.DestinationFolderErrors, "cannot be empty")
+		} else {
+			response.DestinationFolder = strings.Trim(path.Clean(response.DestinationFolder), "/")
+		}
+		if len(response.PathErrors) > 0 || len(response.DestinationFolderErrors) > 0 {
+			writeResponse(w, r, response)
+			return
+		}
+
+		fileInfo, err := fs.Stat(nbrew.FS, path.Join(sitePrefix, response.DestinationFolder))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				response.DestinationFolderErrors = append(response.DestinationFolderErrors, "folder does not exist")
+				writeResponse(w, r, response)
+				return
+			}
+			logger.Error(err.Error())
+			http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if !fileInfo.IsDir() {
+			response.DestinationFolderErrors = append(response.DestinationFolderErrors, "not a folder")
+			writeResponse(w, r, response)
+			return
+		}
 	default:
 		http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 	}
