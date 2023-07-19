@@ -16,12 +16,20 @@ import (
 var ErrUnsupported = errors.New("unsupported operation")
 
 type Filesystem struct {
-	mu    sync.RWMutex
-	mapFS fstest.MapFS
+	mu       sync.RWMutex
+	mapFS    fstest.MapFS
+	readonly bool
 }
 
 func New(mapFS fstest.MapFS) *Filesystem {
+	if mapFS == nil {
+		mapFS = make(fstest.MapFS)
+	}
 	return &Filesystem{mapFS: mapFS}
+}
+
+func NewReadonly(mapFS fstest.MapFS) *Filesystem {
+	return &Filesystem{mapFS: mapFS, readonly: true}
 }
 
 func (fsys *Filesystem) Open(name string) (fs.File, error) {
@@ -34,7 +42,7 @@ func (fsys *Filesystem) OpenWriter(name string, perm fs.FileMode) (io.WriteClose
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
-	if fsys.mapFS == nil {
+	if fsys.readonly {
 		return nil, ErrUnsupported
 	}
 	testFile := &file{
@@ -49,7 +57,7 @@ func (fsys *Filesystem) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
 	}
-	if fsys.mapFS == nil {
+	if fsys.readonly {
 		return ErrUnsupported
 	}
 	fileInfo, err := fs.Stat(fsys, path)
@@ -72,7 +80,7 @@ func (fsys *Filesystem) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrInvalid}
 	}
-	if fsys.mapFS == nil {
+	if fsys.readonly {
 		return ErrUnsupported
 	}
 	fsys.mu.Lock()
@@ -106,7 +114,7 @@ func (fsys *Filesystem) Move(oldpath, newpath string) error {
 	if !fs.ValidPath(newpath) {
 		return &fs.PathError{Op: "move", Path: newpath, Err: fs.ErrInvalid}
 	}
-	if fsys.mapFS == nil {
+	if fsys.readonly {
 		return ErrUnsupported
 	}
 	fsys.mu.Lock()
@@ -199,7 +207,7 @@ func (f *file) Close() error {
 	defer func() {
 		f.buf = nil
 	}()
-	if f.fsys.mapFS == nil {
+	if f.fsys.readonly {
 		return ErrUnsupported
 	}
 	fileInfo, err := fs.Stat(f.fsys, f.name)
