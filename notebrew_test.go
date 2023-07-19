@@ -1511,6 +1511,9 @@ func (fsys *TestFS) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
 	}
+	fsys.mu.Lock()
+	defer fsys.mu.Unlock()
+	// TODO: check if path already exists and is not a file.
 	fsys.MapFS[path] = &fstest.MapFile{
 		Mode:    fs.ModeDir,
 		ModTime: time.Now(),
@@ -1522,6 +1525,10 @@ func (fsys *TestFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrInvalid}
 	}
+	fsys.mu.Lock()
+	defer fsys.mu.Unlock()
+	// TODO: stat the path if it is a file or folder, if folder then need to
+	// recursively delete all entries as well.
 	delete(fsys.MapFS, path)
 	pathPrefix := path + "/"
 	for name := range fsys.MapFS {
@@ -1539,6 +1546,8 @@ func (fsys *TestFS) Move(oldpath, newpath string) error {
 	if !fs.ValidPath(newpath) {
 		return &fs.PathError{Op: "move", Path: newpath, Err: fs.ErrInvalid}
 	}
+	fsys.mu.Lock()
+	defer fsys.mu.Unlock()
 	oldFileInfo, err := fs.Stat(fsys.MapFS, oldpath)
 	if err != nil {
 		// If source file/directory does not exist, no point in moving
