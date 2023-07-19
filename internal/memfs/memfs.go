@@ -15,8 +15,6 @@ import (
 
 var ErrUnsupported = errors.New("unsupported operation")
 
-// memfs.New()
-
 type Filesystem struct {
 	mu    sync.RWMutex
 	mapFS fstest.MapFS
