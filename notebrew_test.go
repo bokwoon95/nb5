@@ -18,6 +18,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
@@ -200,7 +201,7 @@ func Test_GET_createFile(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
-				FS:            TestFS{fstest.MapFS{}},
+				FS:            TestFS{MapFS: fstest.MapFS{}},
 				DB:            newDatabase(t),
 				Dialect:       sq.DialectSQLite,
 				Scheme:        "https://",
@@ -278,7 +279,7 @@ func Test_POST_createFile(t *testing.T) {
 
 	tests := []TestTable{{
 		description: "empty",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "",
 			Name:         "",
@@ -295,7 +296,7 @@ func Test_POST_createFile(t *testing.T) {
 		},
 	}, {
 		description: "posts errors",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/posts/foo/bar/",
 			Name:         "bAz#$%&.exe",
@@ -314,7 +315,7 @@ func Test_POST_createFile(t *testing.T) {
 		},
 	}, {
 		description: "pages errors",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/pages/foo/bar/",
 			Name:         "bAz#$%&.exe",
@@ -330,7 +331,7 @@ func Test_POST_createFile(t *testing.T) {
 		},
 	}, {
 		description: "assets errors",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/assets/foo/bar/",
 			Name:         "bAz#$%&.exe",
@@ -347,7 +348,7 @@ func Test_POST_createFile(t *testing.T) {
 		},
 	}, {
 		description: "parent folder doesnt exist",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "assets/foo/bar",
 			Name:         "baz.js",
@@ -361,7 +362,7 @@ func Test_POST_createFile(t *testing.T) {
 		},
 	}, {
 		description: "file already exists",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
 			"assets/foo/bar/baz.js": &fstest.MapFile{},
 		}},
@@ -377,7 +378,7 @@ func Test_POST_createFile(t *testing.T) {
 		assertFileExists: "assets/foo/bar/baz.js",
 	}, {
 		description: "file already exists (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"~bokwoon/assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
 			"~bokwoon/assets/foo/bar/baz.js": &fstest.MapFile{},
 		}},
@@ -395,7 +396,7 @@ func Test_POST_createFile(t *testing.T) {
 		assertFileExists: "~bokwoon/assets/foo/bar/baz.js",
 	}, {
 		description: "file created successfully",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
@@ -410,7 +411,7 @@ func Test_POST_createFile(t *testing.T) {
 		assertFileExists: "assets/foo/bar/baz.js",
 	}, {
 		description: "file created successfully (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"~bokwoon/assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		multisiteMode: "subdirectory",
@@ -668,7 +669,7 @@ func Test_GET_createFolder(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
-				FS:            TestFS{fstest.MapFS{}},
+				FS:            TestFS{MapFS: fstest.MapFS{}},
 				DB:            newDatabase(t),
 				Dialect:       sq.DialectSQLite,
 				Scheme:        "https://",
@@ -746,7 +747,7 @@ func Test_POST_createFolder(t *testing.T) {
 
 	tests := []TestTable{{
 		description: "empty",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "",
 			Name:         "",
@@ -763,7 +764,7 @@ func Test_POST_createFolder(t *testing.T) {
 		},
 	}, {
 		description: "posts errors",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/posts/foo/bar/",
 			Name:         "bAz#$%&",
@@ -781,7 +782,7 @@ func Test_POST_createFolder(t *testing.T) {
 		},
 	}, {
 		description: "parent folder doesnt exist",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "assets/foo/bar",
 			Name:         "baz",
@@ -795,7 +796,7 @@ func Test_POST_createFolder(t *testing.T) {
 		},
 	}, {
 		description: "folder already exists",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
@@ -810,7 +811,7 @@ func Test_POST_createFolder(t *testing.T) {
 		assertFolderExists: "assets/foo/bar/baz",
 	}, {
 		description: "file with same name already exists",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar/baz": &fstest.MapFile{},
 		}},
 		request: Request{
@@ -826,7 +827,7 @@ func Test_POST_createFolder(t *testing.T) {
 		},
 	}, {
 		description: "folder already exists (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"~bokwoon/assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		multisiteMode: "subdirectory",
@@ -843,7 +844,7 @@ func Test_POST_createFolder(t *testing.T) {
 		assertFolderExists: "~bokwoon/assets/foo/bar/baz",
 	}, {
 		description: "folder created successfully",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
@@ -858,7 +859,7 @@ func Test_POST_createFolder(t *testing.T) {
 		assertFolderExists: "assets/foo/bar/baz",
 	}, {
 		description: "folder created successfully (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"~bokwoon/assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		multisiteMode: "subdirectory",
@@ -1106,7 +1107,7 @@ func Test_GET_rename(t *testing.T) {
 		t.Run(tt.description, func(t *testing.T) {
 			t.Parallel()
 			nbrew := &Notebrew{
-				FS:            TestFS{fstest.MapFS{}},
+				FS:            TestFS{MapFS: fstest.MapFS{}},
 				DB:            newDatabase(t),
 				Dialect:       sq.DialectSQLite,
 				Scheme:        "https://",
@@ -1187,7 +1188,7 @@ func Test_POST_rename(t *testing.T) {
 
 	tests := []TestTable{{
 		description: "empty",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "",
 			OldName:      "",
@@ -1209,7 +1210,7 @@ func Test_POST_rename(t *testing.T) {
 		},
 	}, {
 		description: "folder does not exist",
-		testFS:      &TestFS{fstest.MapFS{}},
+		testFS:      &TestFS{MapFS: fstest.MapFS{}},
 		request: Request{
 			ParentFolder: "/assets/foo/bar/",
 			OldName:      "baz.js",
@@ -1225,7 +1226,7 @@ func Test_POST_rename(t *testing.T) {
 		},
 	}, {
 		description: "parent folder is not a folder",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{},
 		}},
 		request: Request{
@@ -1243,7 +1244,7 @@ func Test_POST_rename(t *testing.T) {
 		},
 	}, {
 		description: "old file doesnt exist",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
 		request: Request{
@@ -1261,7 +1262,7 @@ func Test_POST_rename(t *testing.T) {
 		},
 	}, {
 		description: "new file already exists",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
 			"assets/foo/bar/baz.js": &fstest.MapFile{},
 			"assets/foo/bar/qux.js": &fstest.MapFile{},
@@ -1281,7 +1282,7 @@ func Test_POST_rename(t *testing.T) {
 		},
 	}, {
 		description: "file renamed successfully",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"assets/foo/bar":        &fstest.MapFile{Mode: fs.ModeDir},
 			"assets/foo/bar/baz.js": &fstest.MapFile{},
 		}},
@@ -1300,7 +1301,7 @@ func Test_POST_rename(t *testing.T) {
 		assertNotExists: "assets/foo/bar/baz.js",
 	}, {
 		description: "folder renamed successfully (with sitePrefix)",
-		testFS: &TestFS{fstest.MapFS{
+		testFS: &TestFS{MapFS: fstest.MapFS{
 			"~bokwoon/assets/foo/bar":     &fstest.MapFile{Mode: fs.ModeDir},
 			"~bokwoon/assets/foo/bar/baz": &fstest.MapFile{Mode: fs.ModeDir},
 		}},
@@ -1470,6 +1471,7 @@ func Test_POST_rename(t *testing.T) {
 
 type TestFS struct {
 	fstest.MapFS
+	mu sync.RWMutex
 }
 
 func (fsys *TestFS) Clone() *TestFS {
@@ -1482,7 +1484,7 @@ func (fsys *TestFS) Clone() *TestFS {
 			Sys:     file.Sys,
 		}
 	}
-	return &TestFS{mapFS}
+	return &TestFS{MapFS: mapFS}
 }
 
 func (fsys *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
