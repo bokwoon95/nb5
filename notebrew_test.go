@@ -1513,7 +1513,16 @@ func (testFS *TestFS) MkdirAll(path string, perm fs.FileMode) error {
 	}
 	testFS.mu.Lock()
 	defer testFS.mu.Unlock()
-	// TODO: check if path already exists and is not a file.
+	fileInfo, err := fs.Stat(testFS, path)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	} else {
+		if !fileInfo.IsDir() {
+			return fmt.Errorf("file named %q already exists", path)
+		}
+	}
 	testFS.MapFS[path] = &fstest.MapFile{
 		Mode:    fs.ModeDir,
 		ModTime: time.Now(),
@@ -1624,11 +1633,14 @@ func (testFile *TestFile) Close() error {
 	testFile.testFS.mu.Lock()
 	defer testFile.testFS.mu.Unlock()
 	fileInfo, err := fs.Stat(testFile.testFS, testFile.name)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	if fileInfo != nil && fileInfo.IsDir() {
-		return fmt.Errorf("cannot save file as %q to filesystem, a directory with the same name already exists", testFile.name)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	} else {
+		if fileInfo.IsDir() {
+			return fmt.Errorf("directory named %q already exists", testFile.name)
+		}
 	}
 	testFile.testFS.MapFS[testFile.name] = &fstest.MapFile{
 		Data:    testFile.buf.Bytes(),
