@@ -252,7 +252,7 @@ func (nbrew *Notebrew) IsForeignKeyViolation(err error) bool {
 
 type dirFS string
 
-func DirFS(dir string) fs.FS {
+func NewDirFS(dir string) fs.FS {
 	return dirFS(dir)
 }
 
