@@ -83,6 +83,44 @@ type Notebrew struct {
 	CompressGeneratedHTML bool
 }
 
+type FS interface {
+	// Open opens the named file.
+	//
+	// When Open returns an error, it should be of type *PathError
+	// with the Op field set to "open", the Path field set to name,
+	// and the Err field describing the problem.
+	//
+	// Open should reject attempts to open names that do not satisfy
+	// ValidPath(name), returning a *PathError with Err set to
+	// ErrInvalid or ErrNotExist.
+	Open(name string) (fs.File, error)
+
+	// OpenWriter opens an io.WriteCloser that represents an instance of a file
+	// that can be written to. If the file doesn't exist, it should be created.
+	// If the file exists, its should be truncated.
+	OpenWriter(name string) (io.WriteCloser, error)
+
+	// ReadDir reads the named directory and returns a list of directory
+	// entries sorted by filename.
+	ReadDir(name string) ([]fs.DirEntry, error) // ls
+
+	// MkdirAll creates a directory named path, along with any necessary
+	// parents, and returns nil, or else returns an error. The permission bits
+	// perm (before umask) are used for all directories that MkdirAll creates.
+	// If path is already a directory, MkdirAll does nothing and returns nil.
+	MkdirAll(name string) error // mkdir -p
+
+	// RemoveAll removes all files with prefix matching the path. If there are
+	// no files matching the path, RemoveAll returns nil.
+	RemoveAll(name string) error // rm -rf
+
+	// TODO: Document this.
+	Copy(oldname, newname string) error // cp
+
+	// TODO: Document this.
+	Move(oldname, newname string) error // mv
+}
+
 // WriteFS is the interface implemented by a file system that can be written
 // to.
 type WriteFS interface {

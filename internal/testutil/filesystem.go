@@ -32,6 +32,16 @@ func NewReadonlyFilesystem(mapFS fstest.MapFS) *Filesystem {
 	return &Filesystem{mapFS: mapFS, readonly: true}
 }
 
+/*
+Open(name) (fs.File, error)
+OpenWriter(name string) (io.WriteCloser, error)
+ReadDir(name string) ([]fs.DirEntry, error) -> ls
+MkdirAll(name string) error -> mkdir -p
+RemoveAll(name string) error -> rm -rf
+Copy(oldname, newname string) error -> cp
+Move(oldname, newname string) error -> mv
+*/
+
 func (fsys *Filesystem) Open(name string) (fs.File, error) {
 	fsys.mu.RLock()
 	defer fsys.mu.RUnlock()
