@@ -250,13 +250,13 @@ func (nbrew *Notebrew) IsForeignKeyViolation(err error) bool {
 	}
 }
 
-type dirFS string
+type DirFS string
 
 func NewDirFS(dir string) fs.FS {
-	return dirFS(dir)
+	return DirFS(dir)
 }
 
-func (dir dirFS) Open(name string) (fs.File, error) {
+func (dir DirFS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
@@ -264,7 +264,7 @@ func (dir dirFS) Open(name string) (fs.File, error) {
 	return os.Open(name)
 }
 
-func (dir dirFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
+func (dir DirFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
 	var err error
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open_writer", Path: name, Err: fs.ErrInvalid}
@@ -289,7 +289,7 @@ func (dir dirFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, erro
 	return f, nil
 }
 
-func (dir dirFS) MkdirAll(path string, perm fs.FileMode) error {
+func (dir DirFS) MkdirAll(path string, perm fs.FileMode) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdir_all", Path: path, Err: fs.ErrInvalid}
 	}
@@ -297,7 +297,7 @@ func (dir dirFS) MkdirAll(path string, perm fs.FileMode) error {
 	return os.MkdirAll(path, perm)
 }
 
-func (dir dirFS) RemoveAll(path string) error {
+func (dir DirFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "remove_all", Path: path, Err: fs.ErrInvalid}
 	}
@@ -305,7 +305,7 @@ func (dir dirFS) RemoveAll(path string) error {
 	return os.RemoveAll(path)
 }
 
-func (dir dirFS) Move(oldpath, newpath string) error {
+func (dir DirFS) Move(oldpath, newpath string) error {
 	if !fs.ValidPath(oldpath) {
 		return &fs.PathError{Op: "move", Path: oldpath, Err: fs.ErrInvalid}
 	}
