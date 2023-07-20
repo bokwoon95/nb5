@@ -1495,7 +1495,7 @@ func (testFS *TestFS) Open(name string) (fs.File, error) {
 	return testFS.MapFS.Open(name)
 }
 
-func (testFS *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
+func (testFS *TestFS) OpenWriter(name string) (io.WriteCloser, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
@@ -1507,7 +1507,7 @@ func (testFS *TestFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser,
 	return testFile, nil
 }
 
-func (testFS *TestFS) MkdirAll(path string, perm fs.FileMode) error {
+func (testFS *TestFS) MkdirAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "mkdirall", Path: path, Err: fs.ErrInvalid}
 	}

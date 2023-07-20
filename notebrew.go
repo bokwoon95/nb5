@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -129,7 +128,7 @@ type WriteFS interface {
 	// OpenWriter opens an io.WriteCloser that represents an instance of a file
 	// that can be written to. If the file doesn't exist, it should be created.
 	// If the file exists, its should be truncated.
-	OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error)
+	OpenWriter(name string) (io.WriteCloser, error)
 }
 
 // MkdirAllFS is the interface implemented by a file system that can create
@@ -141,7 +140,7 @@ type MkdirAllFS interface {
 	// parents, and returns nil, or else returns an error. The permission bits
 	// perm (before umask) are used for all directories that MkdirAll creates.
 	// If path is already a directory, MkdirAll does nothing and returns nil.
-	MkdirAll(path string, perm fs.FileMode) error
+	MkdirAll(name string) error
 }
 
 // RemoveAllFS is the interface implemented by a file system that can remove
@@ -157,22 +156,22 @@ type RemoveAllFS interface {
 type MoveFS interface {
 	fs.FS
 
-	Move(oldpath, newpath string) error
+	Move(oldname, newname string) error
 }
 
 // OpenWriter opens an io.WriteCloser from the file system that represents an
 // instance of a file that can be written to. If the file doesn't exist, it
 // should be created.
-func OpenWriter(fsys fs.FS, name string, perm fs.FileMode) (io.WriteCloser, error) {
+func OpenWriter(fsys fs.FS, name string) (io.WriteCloser, error) {
 	if fsys, ok := fsys.(WriteFS); ok {
-		return fsys.OpenWriter(name, perm)
+		return fsys.OpenWriter(name)
 	}
 	return nil, ErrUnsupported
 }
 
 // WriteFile writes the data into a file in the file system.
-func WriteFile(fsys fs.FS, name string, data []byte, perm fs.FileMode) error {
-	writer, err := OpenWriter(fsys, name, perm)
+func WriteFile(fsys fs.FS, name string, data []byte) error {
+	writer, err := OpenWriter(fsys, name)
 	if err != nil {
 		return err
 	}
@@ -188,9 +187,9 @@ func WriteFile(fsys fs.FS, name string, data []byte, perm fs.FileMode) error {
 // and returns nil, or else returns an error. The permission bits perm (before
 // umask) are used for all directories that MkdirAll creates. If path is
 // already a directory, MkdirAll does nothing and returns nil.
-func MkdirAll(fsys fs.FS, path string, perm fs.FileMode) error {
+func MkdirAll(fsys fs.FS, path string) error {
 	if fsys, ok := fsys.(MkdirAllFS); ok {
-		return fsys.MkdirAll(path, perm)
+		return fsys.MkdirAll(path)
 	}
 	return ErrUnsupported
 }
@@ -256,82 +255,79 @@ func NewDirFS(dir string) fs.FS {
 	return DirFS(dir)
 }
 
-func (dir DirFS) Open(name string) (fs.File, error) {
+func (dirFS DirFS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
-	name = filepath.ToSlash(filepath.Join(string(dir), name))
-	return os.Open(name)
+	return os.Open(path.Join(string(dirFS), name))
 }
 
-func (dir DirFS) OpenWriter(name string, perm fs.FileMode) (io.WriteCloser, error) {
+func (dirFS DirFS) OpenWriter(name string) (io.WriteCloser, error) {
 	var err error
 	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "open_writer", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
-	tempDir := filepath.Join(os.TempDir(), "notebrew_temp_dir")
+	tempDir := path.Join(os.TempDir(), "notebrew_temp_dir")
 	err = os.MkdirAll(tempDir, 0755)
 	if err != nil {
 		return nil, err
 	}
 	f := &tempFileWrapper{
-		destFilename: filepath.ToSlash(filepath.Join(string(dir), name)),
+		destFilename: path.Join(string(dirFS), name),
 	}
 	f.tempFile, err = os.CreateTemp(tempDir, "*")
 	if err != nil {
 		return nil, err
 	}
-	fileinfo, err := f.tempFile.Stat()
+	fileInfo, err := f.tempFile.Stat()
 	if err != nil {
 		return nil, err
 	}
-	f.tempFilename = filepath.ToSlash(filepath.Join(tempDir, fileinfo.Name()))
+	f.tempFilename = path.Join(tempDir, fileInfo.Name())
 	return f, nil
 }
 
-func (dir DirFS) MkdirAll(path string, perm fs.FileMode) error {
-	if !fs.ValidPath(path) {
-		return &fs.PathError{Op: "mkdir_all", Path: path, Err: fs.ErrInvalid}
+func (dirFS DirFS) MkdirAll(name string) error {
+	if !fs.ValidPath(name) {
+		return &fs.PathError{Op: "mkdirall", Path: name, Err: fs.ErrInvalid}
 	}
-	path = filepath.ToSlash(filepath.Join(string(dir), path))
-	return os.MkdirAll(path, perm)
+	return os.MkdirAll(path.Join(string(dirFS), name), 0755)
 }
 
-func (dir DirFS) RemoveAll(path string) error {
-	if !fs.ValidPath(path) {
-		return &fs.PathError{Op: "remove_all", Path: path, Err: fs.ErrInvalid}
+func (dirFS DirFS) RemoveAll(name string) error {
+	if !fs.ValidPath(name) {
+		return &fs.PathError{Op: "remove_all", Path: name, Err: fs.ErrInvalid}
 	}
-	path = filepath.ToSlash(filepath.Join(string(dir), path))
-	return os.RemoveAll(path)
+	return os.RemoveAll(path.Join(string(dirFS), name))
 }
 
-func (dir DirFS) Move(oldpath, newpath string) error {
-	if !fs.ValidPath(oldpath) {
-		return &fs.PathError{Op: "move", Path: oldpath, Err: fs.ErrInvalid}
+func (dirFS DirFS) Move(oldname, newname string) error {
+	if !fs.ValidPath(oldname) {
+		return &fs.PathError{Op: "move", Path: oldname, Err: fs.ErrInvalid}
 	}
-	if !fs.ValidPath(newpath) {
-		return &fs.PathError{Op: "move", Path: newpath, Err: fs.ErrInvalid}
+	if !fs.ValidPath(newname) {
+		return &fs.PathError{Op: "move", Path: newname, Err: fs.ErrInvalid}
 	}
-	oldpath = filepath.ToSlash(filepath.Join(string(dir), oldpath))
-	newpath = filepath.ToSlash(filepath.Join(string(dir), newpath))
-	oldFileInfo, err := os.Stat(oldpath)
+	oldname = path.Join(string(dirFS), oldname)
+	newname = path.Join(string(dirFS), newname)
+	oldfileinfo, err := os.Stat(oldname)
 	if err != nil {
 		return err
 	}
-	newFileInfo, err := os.Stat(newpath)
+	newfileinfo, err := os.Stat(newname)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return os.Rename(oldpath, newpath)
+			return os.Rename(oldname, newname)
 		}
 		return err
 	}
-	if !oldFileInfo.IsDir() && newFileInfo.IsDir() {
+	if !oldfileinfo.IsDir() && newfileinfo.IsDir() {
 		if runtime.GOOS == "windows" {
-			return exec.Command("move", oldpath, newpath).Run()
+			return exec.Command("move", oldname, newname).Run()
 		}
-		return exec.Command("mv", oldpath, newpath).Run()
+		return exec.Command("mv", oldname, newname).Run()
 	}
-	return os.Rename(oldpath, newpath)
+	return os.Rename(oldname, newname)
 }
 
 type tempFileWrapper struct {
@@ -769,7 +765,7 @@ func (nbrew *Notebrew) createFile(w http.ResponseWriter, r *http.Request, sitePr
 			return
 		}
 
-		writer, err := OpenWriter(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name), 0644)
+		writer, err := OpenWriter(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name))
 		if err != nil {
 			if errors.Is(err, ErrUnsupported) {
 				response.Error = "unable to create file"
@@ -967,7 +963,7 @@ func (nbrew *Notebrew) createFolder(w http.ResponseWriter, r *http.Request, site
 			return
 		}
 
-		err = MkdirAll(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name), 0755)
+		err = MkdirAll(nbrew.FS, path.Join(sitePrefix, response.ParentFolder, response.Name))
 		if err != nil {
 			if errors.Is(err, ErrUnsupported) {
 				response.Error = "unable to create folder"
