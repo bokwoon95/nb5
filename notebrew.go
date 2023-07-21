@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -251,9 +252,7 @@ func (nbrew *Notebrew) IsForeignKeyViolation(err error) bool {
 
 type DirFS string
 
-func NewDirFS(dir string) fs.FS {
-	return DirFS(dir)
-}
+// var _ FS = DirFS("")
 
 func (dirFS DirFS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
@@ -267,7 +266,7 @@ func (dirFS DirFS) OpenWriter(name string) (io.WriteCloser, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openwriter", Path: name, Err: fs.ErrInvalid}
 	}
-	tempDir := path.Join(os.TempDir(), "notebrew_temp_dir")
+	tempDir := path.Join(os.TempDir(), "notebrewtempdir")
 	err = os.MkdirAll(tempDir, 0755)
 	if err != nil {
 		return nil, err
@@ -287,6 +286,13 @@ func (dirFS DirFS) OpenWriter(name string) (io.WriteCloser, error) {
 	return f, nil
 }
 
+func (dirFS DirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrInvalid}
+	}
+	return os.ReadDir(path.Join(string(dirFS), name))
+}
+
 func (dirFS DirFS) MkdirAll(name string) error {
 	if !fs.ValidPath(name) {
 		return &fs.PathError{Op: "mkdirall", Path: name, Err: fs.ErrInvalid}
@@ -296,9 +302,54 @@ func (dirFS DirFS) MkdirAll(name string) error {
 
 func (dirFS DirFS) RemoveAll(name string) error {
 	if !fs.ValidPath(name) {
-		return &fs.PathError{Op: "remove_all", Path: name, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "removeall", Path: name, Err: fs.ErrInvalid}
 	}
 	return os.RemoveAll(path.Join(string(dirFS), name))
+}
+
+func (dirFS DirFS) Copy(oldname, newname string) error {
+	if !fs.ValidPath(oldname) {
+		return &fs.PathError{Op: "copy", Path: oldname, Err: fs.ErrInvalid}
+	}
+	if !fs.ValidPath(newname) {
+		return &fs.PathError{Op: "copy", Path: newname, Err: fs.ErrInvalid}
+	}
+	if oldname == newname {
+		return &fs.PathError{Op: "copy", Path: newname, Err: fmt.Errorf("oldname and newname are the same")}
+	}
+	oldname = path.Join(string(dirFS), oldname)
+	newname = path.Join(string(dirFS), newname)
+	oldfileinfo, err := os.Stat(oldname)
+	if err != nil {
+		return err
+	}
+	newfileinfo, err := os.Stat(newname)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if !oldfileinfo.IsDir() {
+		oldfile, err := os.Open(oldname)
+		if err != nil {
+			return err
+		}
+		name := newname
+		if newfileinfo != nil && newfileinfo.IsDir() {
+			name = path.Join(newname, path.Base(oldname))
+		}
+		newfile, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, oldfileinfo.Mode())
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(newfile, oldfile)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		return exec.Command("xcopy", "/s", "/e", "/y", filepath.FromSlash(oldname), filepath.FromSlash(newname)).Run()
+	}
+	return exec.Command("cp", filepath.ToSlash(oldname), filepath.ToSlash(newname)).Run()
 }
 
 func (dirFS DirFS) Move(oldname, newname string) error {
@@ -308,26 +359,26 @@ func (dirFS DirFS) Move(oldname, newname string) error {
 	if !fs.ValidPath(newname) {
 		return &fs.PathError{Op: "move", Path: newname, Err: fs.ErrInvalid}
 	}
+	if oldname == newname {
+		return &fs.PathError{Op: "move", Path: newname, Err: fmt.Errorf("oldname and newname are the same")}
+	}
 	oldname = path.Join(string(dirFS), oldname)
 	newname = path.Join(string(dirFS), newname)
-	oldfileinfo, err := os.Stat(oldname)
+	_, err := os.Stat(oldname)
 	if err != nil {
 		return err
 	}
 	newfileinfo, err := os.Stat(newname)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return os.Rename(oldname, newname)
-		}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if !oldfileinfo.IsDir() && newfileinfo.IsDir() {
-		if runtime.GOOS == "windows" {
-			return exec.Command("move", oldname, newname).Run()
-		}
-		return exec.Command("mv", oldname, newname).Run()
+	if newfileinfo == nil || !newfileinfo.IsDir() {
+		return os.Rename(oldname, newname)
 	}
-	return os.Rename(oldname, newname)
+	if runtime.GOOS == "windows" {
+		return exec.Command("move", filepath.FromSlash(oldname), filepath.FromSlash(newname)).Run()
+	}
+	return exec.Command("mv", filepath.ToSlash(oldname), filepath.ToSlash(newname)).Run()
 }
 
 type tempFileWrapper struct {

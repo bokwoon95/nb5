@@ -7,6 +7,11 @@ notes:
     - Must start with posts, pages, templates, notes or assets.
     - Posts and pages must adhere to the /posts/{postID}/ or /posts/{category}/{postID}/ format.
 
+create_file
+create_folder
+rename
+delete
+
 /admin/~bokwoon/create_file/
 /admin/~bokwoon/create_folder/
 /admin/~bokwoon/rename/

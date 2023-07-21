@@ -35,11 +35,10 @@ func NewReadonlyFilesystem(mapFS fstest.MapFS) *Filesystem {
 /*
 Open(name) (fs.File, error)
 OpenWriter(name string) (io.WriteCloser, error)
-ReadDir(name string) ([]fs.DirEntry, error) -> ls
-MkdirAll(name string) error -> mkdir -p
-RemoveAll(name string) error -> rm -rf
-Copy(oldname, newname string) error -> cp
-Move(oldname, newname string) error -> mv
+ReadDir(name string) ([]fs.DirEntry, error)
+Mkdir(name string) error
+Remove(name string) error
+Rename(oldname, newname string)
 */
 
 func (fsys *Filesystem) Open(name string) (fs.File, error) {
@@ -129,15 +128,12 @@ func (fsys *Filesystem) Move(oldpath, newpath string) error {
 		return ErrUnsupported
 	}
 	oldFileInfo, err := fs.Stat(fsys, oldpath)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err != nil {
 		return err
 	}
 	newFileInfo, err := fs.Stat(fsys, newpath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
-	}
-	if oldFileInfo == nil {
-		return fmt.Errorf("%q does not exist", oldpath)
 	}
 	fsys.mu.Lock()
 	defer fsys.mu.Lock()
